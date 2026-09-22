@@ -16,13 +16,9 @@ A mobile-first, interactive SVG-based map for poster sessions with color-coded p
 │   │   ├── layout-api.js # Layout API for SVG management
 │   │   └── unified-app.js # Additional app functionality
 │   └── svg/              # SVG building/map files
-│       ├── Parsons.svg
-│       ├── Garden Boxes.svg
-│       ├── Strauss Plaza.svg
-│       └── Sprague.svg
+│       └── strauss-plaza.svg  # Combined site map (all buildings, one file)
 ├── data/                 # Data files
-│   ├── Poster_Research_Scholarships.tsv  # Poster information
-│   └── Mounts.tsv        # Physical mount positions & orientations
+│   └── poster-data.tsv  # Poster info, mount position/orientation, and marker color (one row per poster)
 └── docs/                 # Documentation
     └── LAYOUT-API.md     # Layout API documentation
 ```
@@ -30,37 +26,31 @@ A mobile-first, interactive SVG-based map for poster sessions with color-coded p
 ## 🚀 Quick Start
 
 1. Open `index.html` in a web browser
-2. The map will automatically load poster mounts from the TSV files
+2. The map will automatically load poster mounts from the TSV file
 3. Hover over colored circles to view poster information
 4. Use mouse wheel or touch gestures to zoom and pan
 
 ## 📊 Data Structure
 
-### Poster Data (`data/Poster_Research_Scholarships.tsv`)
+### Poster Data (`data/poster-data.tsv`)
+One row per poster; two posters sharing a Mount ID form one physical two-sided mount.
 - **Poster Category**: Subject area (Biology, Chemistry, etc.)
 - **Easel Board**: Unique poster identifier (B-1, C-3, etc.)
 - **Poster Title**: Full poster title
-- **Student(s)**: Student authors
-- **Faculty/Mentor**: Faculty advisor
-- **Mount ID**: References physical mount (links to Mounts.tsv)
+- **Students**: Student authors
+- **Faculty**: Faculty advisor
+- **Mount ID**: Groups posters that share a physical mount
 - **Side**: North/South (horizontal) or East/West (vertical) positioning
-
-### Mount Data (`data/Mounts.tsv`)
-- **Mount ID**: Unique mount identifier
-- **X Coordinate**: Pixel position from left (0-1200)
-- **Y Coordinate**: Pixel position from top (0-1600)
+- **X Coordinate**: Pixel position from left
+- **Y Coordinate**: Pixel position from top
 - **Orientation**: 'horizontal' or 'vertical'
+- **Color**: Hex color for this poster's marker (e.g. `#FFFFFF`)
+
+`tools/mount-editor.html` is the dev tool for editing X/Y/Orientation visually - it loads and exports `poster-data.tsv` directly, leaving all other columns untouched.
 
 ## 🎨 Color Coding
 
-Poster circles are automatically color-coded by subject:
-- **Biology (B)**: Green `#008000`
-- **Chemistry (C)**: Red `#FF0000`
-- **Computer Science (CS)**: Light Blue `#87CEEB`
-- **Engineering (E)**: Black `#000000`
-- **Physics (P)**: Purple `#800080`
-- **Mathematics (M)**: Deep Orange `#FF8C00`
-- **And more...** (see `getColorByEaselBoardId()` in layout-api.js)
+Each poster's marker is colored by its own **Color** column in `poster-data.tsv` - there's no automatic category-based coloring, so a blank/placeholder value (e.g. `#FFFFFF`) shows as-is until a real color is assigned.
 
 ## 🛠️ Technical Features
 
@@ -75,12 +65,12 @@ Poster circles are automatically color-coded by subject:
 ## 📝 Adding New Content
 
 ### Add a New Poster:
-1. Add row to `data/Poster_Research_Scholarships.tsv`
-2. Specify existing Mount ID or create new mount in `data/Mounts.tsv`
+1. Add a row to `data/poster-data.tsv` with its own Poster Category/Easel Board/Title/Students/Faculty/Color
+2. Give it an existing Mount ID (to share a mount with another poster) or a new one, and set its Side
+3. Fill in X Coordinate/Y Coordinate/Orientation directly, or leave them blank and place it visually in `tools/mount-editor.html`
 
 ### Add a New Mount:
-1. Add row to `data/Mounts.tsv` with coordinates and orientation
-2. Reference the Mount ID in poster data
+1. Place it in `tools/mount-editor.html` (or set X Coordinate/Y Coordinate/Orientation by hand) for the poster row(s) sharing that Mount ID
 
 ### Add a New Building:
 1. Add SVG file to `assets/svg/`
