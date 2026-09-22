@@ -39,10 +39,11 @@ thead {
 .easel-cell {
     white-space: nowrap;
     vertical-align: middle;
+    text-align: center;
 }
 
 .easel-cell svg {
-    margin-right: 6px;
+    margin-right: 0;
     vertical-align: middle;
 }
 

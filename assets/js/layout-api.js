@@ -850,8 +850,6 @@ class LayoutAPI {
             activateMarker();
 
             // Show mount ID in console for dev debugging
-            console.log(`Mount ID: ${config.id}`);
-
             showPosterInfo();
         });
 
@@ -1088,7 +1086,6 @@ class LayoutAPI {
         const attachInteractiveHandlers = (side, indicator, text) => {
             indicator.addEventListener('mouseenter', () => {
                 activateIndicator(indicator, text);
-                console.log(`Mount ID: ${config.id}`);
                 showPosterInfo(side);
             });
 

@@ -49,14 +49,8 @@ class PosterSessionMap {
         this.infoDescription = document.getElementById('infoDescription');
         this.fullscreenBtn = document.getElementById('toggleFullscreen');
         this.tablePanel = document.getElementById('tablePanel');
-        this.fullscreenEnterIcon = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrows-fullscreen" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path fill-rule="evenodd" d="M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707m4.344 0a.5.5 0 0 1 .707 0l4.096 4.096V11.5a.5.5 0 1 1 1 0v3.975a.5.5 0 0 1-.5.5H11.5a.5.5 0 0 1 0-1h2.768l-4.096-4.096a.5.5 0 0 1 0-.707m0-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 0 1 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707m-4.344 0a.5.5 0 0 1-.707 0L1.025 1.732V4.5a.5.5 0 0 1-1 0V.525a.5.5 0 0 1 .5-.5H4.5a.5.5 0 0 1 0 1H1.732l4.096 4.096a.5.5 0 0 1 0 .707"/>
-            </svg>`;
-        this.fullscreenExitIcon = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-fullscreen-exit" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5m5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5M0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5m10 1a1.5 1.5 0 0 1 1.5-1.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0z"/>
-            </svg>`;
+        this.fullscreenEnterIcon = this.fullscreenBtn ? this.fullscreenBtn.querySelector('.fullscreen-enter') : null;
+        this.fullscreenExitIcon = this.fullscreenBtn ? this.fullscreenBtn.querySelector('.fullscreen-exit') : null;
         this.isFullScreen = document.body.classList.contains('map-fullscreen');
         this.handleGlobalKeydown = (event) => {
             if (event.key !== 'Escape') {
@@ -512,16 +506,31 @@ let isPanning = false;
         this.svg.addEventListener('wheel', (e) => {
             e.preventDefault();
 
+            const modeMultiplier = e.deltaMode === 1 ? 20 : e.deltaMode === 2 ? 60 : 1;
+            const normalizedDelta = e.deltaY * modeMultiplier;
+            if (!normalizedDelta) {
+                return;
+            }
+
             if (e.ctrlKey) {
                 // Trackpad pinch-to-zoom (the ctrl+wheel convention browsers
-                // use for this gesture): live, unanimated, proportional to
-                // -deltaY, anchored at the cursor.
+                // use for this gesture): live, unanimated, cursor-anchored.
+                // Intensity scales with gesture size and current zoom level -
+                // a flat multiplier felt too twitchy zoomed-in and too
+                // sluggish zoomed-out.
                 this.stopPanInertia(true);
                 this.stopPanAnimation();
                 this.stopZoomAnimation();
 
-                const zoomFactor = Math.exp(-e.deltaY * 0.01);
-                const targetZoom = Math.min(this.maxZoom, Math.max(this.minZoom, this.currentZoom * zoomFactor));
+                const PINCH_BASE_INTENSITY = 0.0035;
+                const absDelta = Math.min(240, Math.abs(normalizedDelta));
+                const deltaFactor = 1 + (absDelta / 120); // 1 → 3 range based on gesture size
+                const zoomRange = Math.max(this.maxZoom - this.minZoom, 0.0001);
+                const zoomNormalized = (this.currentZoom - this.minZoom) / zoomRange;
+                const zoomFactor = 0.9 + zoomNormalized * 1.2; // 0.9 → 2.1 range based on current zoom
+                const intensity = PINCH_BASE_INTENSITY * deltaFactor * zoomFactor;
+
+                const targetZoom = Math.min(this.maxZoom, Math.max(this.minZoom, this.currentZoom * Math.exp(-normalizedDelta * intensity)));
                 const anchored = this.computeAnchoredPan(targetZoom, e.clientX, e.clientY);
 
                 this.currentZoom = targetZoom;
@@ -540,9 +549,9 @@ let isPanning = false;
             // distinction is known to be unreliable across browsers/OSes -
             // it's the standard heuristic; refine if real-hardware testing
             // surfaces mismatches.
-            const isDiscreteNotch = e.deltaMode !== 0 || Math.abs(e.deltaY) >= 40;
-            const stepMultiplier = isDiscreteNotch ? 1.5 : Math.exp(Math.abs(e.deltaY) * 0.02);
-            const zoomFactor = e.deltaY > 0 ? 1 / stepMultiplier : stepMultiplier;
+            const isDiscreteNotch = e.deltaMode !== 0 || Math.abs(normalizedDelta) >= 40;
+            const stepMultiplier = isDiscreteNotch ? 1.5 : Math.exp(Math.abs(normalizedDelta) * 0.02);
+            const zoomFactor = normalizedDelta > 0 ? 1 / stepMultiplier : stepMultiplier;
             const targetZoom = this.currentZoom * zoomFactor;
 
             // Each call cancels any in-flight zoom animation and restarts
@@ -919,12 +928,22 @@ let isPanning = false;
     }
 
     updateFullScreenUI() {
-        if (this.fullscreenBtn) {
-            const pressed = this.isFullScreen ? 'true' : 'false';
-            this.fullscreenBtn.setAttribute('aria-pressed', pressed);
-            this.fullscreenBtn.setAttribute('aria-label', this.isFullScreen ? 'Exit full screen view' : 'View map full screen');
-            this.fullscreenBtn.setAttribute('title', this.isFullScreen ? 'Exit Full Screen' : 'Full Screen Map');
-            this.fullscreenBtn.innerHTML = this.isFullScreen ? this.fullscreenExitIcon : this.fullscreenEnterIcon;
+        if (!this.fullscreenBtn) {
+            return;
+        }
+
+        const pressed = this.isFullScreen ? 'true' : 'false';
+        this.fullscreenBtn.setAttribute('aria-pressed', pressed);
+        this.fullscreenBtn.setAttribute('aria-label', this.isFullScreen ? 'Exit full screen view' : 'View map full screen');
+        this.fullscreenBtn.setAttribute('title', this.isFullScreen ? 'Exit Full Screen' : 'View map full screen');
+        this.fullscreenBtn.setAttribute('data-state', this.isFullScreen ? 'exit' : 'enter');
+
+        if (this.fullscreenEnterIcon) {
+            this.fullscreenEnterIcon.setAttribute('aria-hidden', this.isFullScreen ? 'true' : 'false');
+        }
+
+        if (this.fullscreenExitIcon) {
+            this.fullscreenExitIcon.setAttribute('aria-hidden', this.isFullScreen ? 'false' : 'true');
         }
     }
 
