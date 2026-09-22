@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>2025 Poster Session - Interactive Map</title>
+    <title>2026 Poster Session - Interactive Map</title>
+    <link rel="icon" type="image/png" href="assets/HMC%20BGW%20RGB%20150dpi.png">
     <style>
         * {
             margin: 0;
@@ -45,22 +46,21 @@
         }
 
         .header-logo {
-            height: 40px;
+            height: 48px;
             width: auto;
         }
 
         .header h1 {
-            font-size: 1.5rem;
+            font-size: 2.1rem;
             margin: 0;
             line-height: 1.2;
         }
 
         .header h1 .subheading {
-            display: inline;
-            font-size: inherit;
-            font-weight: inherit;
-            color: inherit;
-            margin-left: 0.4rem;
+            display: block;
+            font-size: 1.5rem;
+            font-weight: 500;
+            color: black;
         }
 
         .header p {
@@ -112,6 +112,10 @@
             min-width: 100%;
             min-height: 100%;
             transform-origin: center center;
+            /* Belt-and-suspenders alongside the JS preventDefault()/gesture
+               handling in script.js: stop the browser's own pinch-zoom-the-
+               page gesture from ever engaging over the map. */
+            touch-action: none;
         }
 
         .svg-map:active {
@@ -309,12 +313,6 @@
             pointer-events: none;
         }
 
-        .easel-pill--table {
-            width: 44px;
-            height: 44px;
-            margin-right: 0;
-        }
-
         .info-description {
             font-size: 1.5rem;
             color: #444;
@@ -330,6 +328,43 @@
             font-weight: 600;
         }
 
+        .map-loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            z-index: 40;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+
+        .map-loading-overlay.map-loading-overlay--hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .map-loading-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid rgba(0, 127, 163, 0.2);
+            border-top-color: #007FA3;
+            border-radius: 50%;
+            animation: mapLoadingSpin 0.8s linear infinite;
+        }
+
+        @keyframes mapLoadingSpin {
+            to { transform: rotate(360deg); }
+        }
+
+        .map-loading-text {
+            font-size: 0.95rem;
+            color: #555;
+        }
+
         .controls {
             position: absolute;
             top: var(--controls-offset-top, 20px);
@@ -342,8 +377,8 @@
 
 
         .control-btn {
-            background: #E57200;
-            background: rgba(229, 114, 0, 0.9);
+            background: #007FA3;
+            background: rgba(0, 127, 163, 0.9);
             border: none;
             border-radius: 8px;
             width: 44px;
@@ -351,7 +386,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 2px 12px rgba(229, 114, 0, 0.35);
+            box-shadow: 0 2px 12px rgba(0, 127, 163, 0.35);
             cursor: pointer;
             font-size: 18px;
             color: #fff;
@@ -369,10 +404,10 @@
         }
 
         .control-btn:hover {
-            background: rgba(229, 114, 0, 1);
+            background: rgba(0, 127, 163, 1);
             color: #fff;
             transform: scale(1.05);
-            box-shadow: 0 4px 14px rgba(229, 114, 0, 0.4);
+            box-shadow: 0 4px 14px rgba(0, 127, 163, 0.4);
         }
 
         #toggleFullscreen {
@@ -389,14 +424,14 @@
         }
 
         body.map-fullscreen #toggleFullscreen {
-            background: #007FA3;
+            background: rgba(229, 114, 0, 0.9);
             color: #fff;
-            box-shadow: 0 2px 12px rgba(0, 127, 163, 0.35);
+            box-shadow: 0 2px 12px rgba(229, 114, 0, 0.35);
         }
 
         body.map-fullscreen #toggleFullscreen:hover {
-            background: #026e8c;
-            box-shadow: 0 4px 14px rgba(0, 127, 163, 0.4);
+            background: #E57200;
+            box-shadow: 0 4px 14px rgba(229, 114, 0, 0.4);
             color: #fff;
         }
 
@@ -475,9 +510,9 @@ body.map-fullscreen .table-responsive {
         .map-container {
             flex: 1;
             position: relative;
-            background: #f2f2f2;
+            background: #fff;
             border-radius: 10px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1), inset 0 0 40px 10px rgba(248, 246, 240, 0.85);
             overflow: hidden;
             min-height: 0;
         }
@@ -500,7 +535,7 @@ body.map-fullscreen .table-responsive {
             position: sticky;
             top: 0;
             z-index: 6;
-            background: inherit;d: inherit;
+            background: inherit;
         }
 
         .table-responsive {
@@ -526,8 +561,20 @@ body.map-fullscreen .table-responsive {
 
         #tsvTable th,
         #tsvTable td {
-            word-wrap: break-word;
-            overflow-wrap: anywhere;
+            /* Never force a mid-word break (that's what produced single
+               "hanging letter" orphans like "Categor" / "y"). Words only
+               wrap at their natural space/comma boundaries; hyphens:auto
+               opportunistically adds a hyphenated break for words the
+               browser's dictionary supports, but never forces an ugly one
+               when it doesn't. Any word too long for its column just runs
+               past it rather than getting mangled - table-responsive's
+               horizontal scroll is the fallback for extreme cases. */
+            word-wrap: normal;
+            overflow-wrap: normal;
+            word-break: normal;
+            -webkit-hyphens: auto;
+            -ms-hyphens: auto;
+            hyphens: auto;
             white-space: normal;
             line-height: 1.3;
         }
@@ -593,9 +640,52 @@ body.map-fullscreen .table-responsive {
 
         .poster-title {
             white-space: normal !important;
-            overflow-wrap: anywhere !important;
+            overflow-wrap: normal !important;
             word-break: normal !important;
+            -webkit-hyphens: auto !important;
+            -ms-hyphens: auto !important;
+            hyphens: auto !important;
             max-width: 100%;
+        }
+
+        #tsvTable th.poster-title,
+        #tsvTable td.poster-title {
+            width: 38%;
+            min-width: 140px;
+        }
+
+        #tsvTable th.easel-column,
+        #tsvTable td.easel-column {
+            width: 16%;
+            min-width: 80px;
+        }
+
+        #tsvTable th.poster-time-column,
+        #tsvTable td.poster-time-column {
+            width: 20%;
+            max-width: 200px;
+            min-width: 90px;
+        }
+
+        #tsvTable th.student-column,
+        #tsvTable td.student-column {
+            width: 22%;
+            max-width: 200px;
+            min-width: 100px;
+        }
+
+        #tsvTable th.faculty-column,
+        #tsvTable td.faculty-column {
+            width: 11%;
+            max-width: 150px;
+            min-width: 90px;
+        }
+
+        #tsvTable th.category-column,
+        #tsvTable td.category-column {
+            width: 13%;
+            max-width: 120px;
+            min-width: 92px;
         }
 
         @media (min-width: 992px) {
@@ -607,15 +697,56 @@ body.map-fullscreen .table-responsive {
                 align-items: stretch;
             }
 
-            body:not(.map-fullscreen) .map-container,
-            body:not(.map-fullscreen) .table-container {
-                flex: 1 1 50%;
-                max-width: 50%;
+            .map-container {
+                flex: 1 1 38%;
                 min-width: 0;
             }
 
-            #tsvTable {
-                table-layout: auto;
+            .table-container {
+                flex: 1 1 62%;
+                min-width: 360px;
+                max-width: 980px;
+            }
+
+            /* Stay on table-layout: fixed (see base rule above) rather than
+               "auto" - "auto" layout sizes columns off each cell's content,
+               and collapses Students/Faculty to a sliver whenever
+               Poster Title's content wants more room. Fixed layout keeps the
+               declared percentages/min-widths in effect regardless of content. */
+
+            #tsvTable th.poster-title,
+            #tsvTable td.poster-title {
+                width: 34%;
+                max-width: 340px;
+            }
+
+            #tsvTable th.easel-column,
+            #tsvTable td.easel-column {
+                width: 14%;
+            }
+
+            #tsvTable th.poster-time-column,
+            #tsvTable td.poster-time-column {
+                width: 20%;
+                max-width: 220px;
+            }
+
+            #tsvTable th.student-column,
+            #tsvTable td.student-column {
+                width: 22%;
+                max-width: 220px;
+            }
+
+            #tsvTable th.faculty-column,
+            #tsvTable td.faculty-column {
+                width: 18%;
+                max-width: 240px;
+            }
+
+            #tsvTable th.category-column,
+            #tsvTable td.category-column {
+                width: 12%;
+                max-width: 120px;
             }
         }
 
@@ -634,6 +765,15 @@ body.map-fullscreen .table-responsive {
             transition: background-color 0.3s ease;
         }
 
+        #tsvTable tbody tr {
+            cursor: pointer;
+        }
+
+        #tsvTable tbody tr:focus-visible {
+            outline: 2px solid #007FA3;
+            outline-offset: -2px;
+        }
+
         #tsvTable tr.selected {
             background-color: #fdb913;
         }
@@ -644,16 +784,188 @@ body.map-fullscreen .table-responsive {
             margin-bottom: 10px;
         }
 
+        .filter-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
         .search-form {
             position: relative;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .category-filter {
+            position: relative;
+            flex: 0 0 auto;
+        }
+
+        .category-filter-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-sizing: border-box;
+            height: 52px;
+            padding: 0 18px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            color: #333;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .category-filter-btn svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        .category-filter-btn:hover {
+            border-color: #007FA3;
+        }
+
+        .category-filter-btn:focus-visible {
+            outline: none;
+            border-color: #007FA3;
+            box-shadow: 0 0 0 3px rgba(0, 127, 163, 0.15);
+        }
+
+        .category-filter-btn.active {
+            border-color: #007FA3;
+            background: rgba(0, 127, 163, 0.08);
+            color: #007FA3;
+        }
+
+        .filter-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 10px;
+            background: #007FA3;
+            color: #fff;
+            font-size: 0.8rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .category-filter-dropdown {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            width: 300px;
+            max-width: calc(100vw - 40px);
+            max-height: 360px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1);
+            border: 1px solid rgba(0,0,0,0.1);
+            z-index: 30;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .category-filter-dropdown[hidden] {
+            display: none;
+        }
+
+        .category-filter-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .category-filter-clear {
+            background: transparent;
+            border: none;
+            color: #026a86;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 4px 6px;
+        }
+
+        .category-filter-clear:hover {
+            text-decoration: underline;
+        }
+
+        .category-filter-options {
+            overflow-y: auto;
+            padding: 6px 4px;
+        }
+
+        .category-filter-option {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            min-height: 44px;
+            box-sizing: border-box;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1.05rem;
+            color: #222;
+        }
+
+        .category-filter-option:hover {
+            background: #f5f5f5;
+        }
+
+        .category-filter-option input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: #007FA3;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .category-filter-empty {
+            padding: 12px 16px;
+            font-size: 1rem;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .filter-controls {
+                gap: 8px;
+            }
+
+            .category-filter-btn {
+                padding: 0 12px;
+            }
+
+            .category-filter-label {
+                display: none;
+            }
+
+            .category-filter-dropdown {
+                left: auto;
+                right: 0;
+                width: 280px;
+                max-width: calc(100vw - 40px);
+            }
         }
 
         #searchbar {
             width: 100%;
-            padding: 12px 48px 12px 16px;
+            box-sizing: border-box;
+            height: 52px;
+            padding: 0 48px 0 16px;
             border: 2px solid #ddd;
             border-radius: 8px;
-            font-size: 1rem;
+            font-size: 1.2rem;
             background: #fff;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
@@ -693,6 +1005,38 @@ body.map-fullscreen .table-responsive {
 
         #clearSearch:focus-visible {
             outline: 2px solid #000;
+            outline-offset: 2px;
+        }
+
+        .clear-search-bottom-container {
+            display: flex;
+            justify-content: center;
+            padding: 20px 16px 28px;
+        }
+
+        .clear-search-bottom-container[hidden] {
+            display: none;
+        }
+
+        .clear-search-bottom-btn {
+            background: #fff;
+            border: 2px solid #007FA3;
+            color: #007FA3;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .clear-search-bottom-btn:hover {
+            background: #007FA3;
+            color: #fff;
+        }
+
+        .clear-search-bottom-btn:focus-visible {
+            outline: 2px solid #007FA3;
             outline-offset: 2px;
         }
 
@@ -809,8 +1153,14 @@ body.map-fullscreen .table-responsive {
 
             #tsvTable th,
             #tsvTable td {
-                font-size: 1.05rem;
+                font-size: 1.2rem;
+                line-height: 1.45;
                 min-width: 0;
+            }
+
+            #tsvTable tbody td {
+                padding-top: 12px;
+                padding-bottom: 12px;
             }
 
             #tsvTable th.poster-title,
@@ -976,6 +1326,7 @@ body.map-fullscreen .table-responsive {
                 font-size: 8px;
             }
         }
+        }
     </style>
 </head>
 <body>
@@ -984,15 +1335,15 @@ body.map-fullscreen .table-responsive {
             <a href="https://www.hmc.edu/" target="_blank" rel="noopener noreferrer">
                 <img src="assets/HMC BGW RGB 150dpi.png" alt="HMC Logo" class="header-logo">
             </a>
-            <h1>HMC Poster Session <span class="subheading">Fall 2025</span></h1>
+            <h1>HMC Poster Session <span class="subheading">Fall 2026</span></h1>
         </div>
     </div>
 
     <div class="main-content">
         <div class="map-container">
-            <svg class="svg-map" viewBox="0 0 1150 1360" id="posterMap">
+            <svg class="svg-map" viewBox="0 0 1078 1558" id="posterMap">
                 <!-- Background -->
-                <rect width="1150" height="1360" fill="#F8F6F0" stroke="#606060"/>
+                <rect width="1078" height="1558" fill="#FFFFFF"/>
                 
                 <!-- Buildings will be added via Layout API -->
                 
@@ -1002,6 +1353,11 @@ body.map-fullscreen .table-responsive {
                 <!-- Markers will be dynamically generated -->
                 <g id="markers"></g>
             </svg>
+
+            <div class="map-loading-overlay" id="mapLoadingOverlay" role="status" aria-live="polite">
+                <div class="map-loading-spinner" aria-hidden="true"></div>
+                <div class="map-loading-text">Loading map&hellip;</div>
+            </div>
 
             <div class="controls">
                 <button class="control-btn" id="zoomIn" title="Zoom In">
@@ -1042,16 +1398,37 @@ body.map-fullscreen .table-responsive {
 
         <div class="table-container" id="tablePanel">
             <div id="filter-form-container">
-                <form class="search-form" role="search">
-                    <input type="text" class="form-control" id="searchbar" placeholder="Search posters..." aria-label="Search posters">
-                    <button type="button" id="clearSearch" aria-label="Clear search">
-                        <span class="glyphicon glyphicon-remove" aria-hidden="true"></span>
-                    </button>
-                </form>
+                <div class="filter-controls">
+                    <form class="search-form" role="search">
+                        <input type="text" class="form-control" id="searchbar" placeholder="Search posters..." aria-label="Search posters">
+                        <button type="button" id="clearSearch" aria-label="Clear search">
+                            <span class="glyphicon glyphicon-remove" aria-hidden="true"></span>
+                        </button>
+                    </form>
+                    <div class="category-filter">
+                        <button type="button" id="categoryFilterToggle" class="category-filter-btn" aria-haspopup="true" aria-expanded="false" aria-controls="categoryFilterDropdown">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                                <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
+                            </svg>
+                            <span class="category-filter-label">Categories</span>
+                            <span id="categoryFilterCount" class="filter-count-badge" hidden>0</span>
+                        </button>
+                        <div id="categoryFilterDropdown" class="category-filter-dropdown" hidden>
+                            <div class="category-filter-header">
+                                <span>Filter by Category</span>
+                                <button type="button" id="categoryFilterClear" class="category-filter-clear">Clear</button>
+                            </div>
+                            <div id="categoryFilterOptions" class="category-filter-options"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="table-responsive">
                 <table id="tsvTable" class="table table-striped table-hover">
                 </table>
+                <div id="clearSearchBottomContainer" class="clear-search-bottom-container" hidden>
+                    <button type="button" id="clearSearchBottom" class="clear-search-bottom-btn">Clear search results</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1066,111 +1443,24 @@ body.map-fullscreen .table-responsive {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
     <script>
         // Table functionality
-        function getEaselColor(easelId) {
-            if (!easelId) {
-                return '#404040';
-            }
-
-            if (window.layout && typeof window.layout.getColorByEaselBoardId === 'function') {
-                return window.layout.getColorByEaselBoardId(easelId);
-            }
-
-            const key = easelId.split('-')[0];
-            switch (key) {
-                case 'B':
-                    return '#008000';
-                case 'BCS':
-                case 'CEP':
-                case 'CHC':
-                case 'CP':
-                case 'CSE':
-                case 'CSEM':
-                case 'CSEP':
-                case 'CSHC':
-                case 'CSM':
-                case 'EP':
-                    return '#FFA500';
-                case 'C':
-                    return '#FF0000';
-                case 'CS':
-                    return '#87CEEB';
-                case 'E':
-                    return '#000000';
-                case 'HC':
-                    return '#B59410';
-                case 'BHC':
-                    return '#FFA500';
-                case 'HSA':
-                    return '#20B2AA';
-                case 'HSAM':
-                    return '#FFA500';
-                case 'M':
-                    return '#FF8C00';
-                case 'P':
-                    return '#800080';
-                default:
-                    return '#404040';
-            }
-        }
-
-        function getEaselTextColor(backgroundColor) {
-            if (window.layout && typeof window.layout.getTextColorForBackground === 'function') {
-                return window.layout.getTextColorForBackground(backgroundColor);
-            }
-
-            const fallbackColor = (backgroundColor || '').toString().toUpperCase();
-            const lightColors = new Set(['#87CEEB', '#20B2AA', '#FFA500', '#FFD700']);
-            return lightColors.has(fallbackColor) ? 'black' : 'white';
-        }
-
-        function getEaselFontSize(easelId) {
-            const text = (easelId || '').toString();
-
-            if (text.length <= 2) {
-                return 12;
-            }
-            if (text.length <= 4) {
-                return 10;
-            }
-            if (text.length <= 6) {
-                return 8;
-            }
-            if (text.length <= 8) {
-                return 7;
-            }
-            return 6;
-        }
-
-        function escapeHtml(value) {
-            if (value === null || value === undefined) {
-                return '';
-            }
-
-            return value
-                .toString()
+        function escapeAttr(value) {
+            return String(value || '')
                 .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+                .replace(/</g, '&lt;');
         }
 
-        function createColorIcon(easelId) {
-            const normalizedId = (easelId ?? '').toString().trim();
-            const displayText = normalizedId || '?';
-            const backgroundColor = getEaselColor(normalizedId);
-            const textColor = getEaselTextColor(backgroundColor);
-            const fontSize = getEaselFontSize(normalizedId);
-            const accessibleLabel = normalizedId ? `Easel ${normalizedId}` : 'Easel unavailable';
-
-            return `
-                <span class="easel-pill easel-pill--table" data-easel="${escapeHtml(normalizedId)}" role="img" aria-label="${escapeHtml(accessibleLabel)}">
-                    <svg class="easel-pill__svg" viewBox="0 0 36 36" role="presentation" focusable="false">
-                        <circle cx="18" cy="18" r="16" fill="${backgroundColor}" stroke="white" stroke-width="2"></circle>
-                        <text x="18" y="18" fill="${textColor}" font-size="${fontSize}" dominant-baseline="middle" text-anchor="middle">${escapeHtml(displayText)}</text>
-                    </svg>
-                </span>
-            `.trim();
+        function createColorIcon(color, category) {
+            // The color dot is decorative shorthand for category - on mobile the
+            // text "Poster Category" column is hidden to save space, so color
+            // would otherwise be the ONLY way this info is conveyed (fails WCAG
+            // 1.4.1 Use of Color, and screen readers get nothing at all). Giving
+            // the dot an accessible name keeps the category available everywhere.
+            const label = category ? `${category} category` : 'Category color indicator';
+            const safeLabel = escapeAttr(label);
+            return `<svg width="16" height="16" viewBox="0 0 24 24" role="img" aria-label="${safeLabel}" style="display: inline-block; margin-right: 8px; vertical-align: middle;">
+                      <circle cx="12" cy="12" r="10" fill="${color || '#404040'}"/>
+                    </svg>`;
         }
 
         // Global variables for marker management
@@ -1180,6 +1470,7 @@ body.map-fullscreen .table-responsive {
 
         const AUTO_HIGHLIGHT_DELAY_MS = 350;
         let autoHighlightTimeout = null;
+        let selectedCategories = new Set();
 
         function clearTableSelection() {
             const hasSelection = $('#tsvTable tbody tr.selected').length > 0;
@@ -1272,18 +1563,21 @@ body.map-fullscreen .table-responsive {
             };
         }
 
+        // Columns that carry mount/marker data rather than poster info to show in the table
+        const HIDDEN_TABLE_COLUMNS = new Set(['Mount ID', 'Side', 'X Coordinate', 'Y Coordinate', 'Orientation', 'Color']);
+
         function displayTable(tableData) {
             const table = document.getElementById("tsvTable");
             table.innerHTML = "";
 
-            // Generate headers (excluding Mount ID and Side columns)
+            // Generate headers (excluding mount/marker columns)
             const headers = tableData[0];
             let headerRow = '<thead><tr>' + headers.map(header => {
-                if (header === 'Mount ID' || header === 'Side') {
+                if (HIDDEN_TABLE_COLUMNS.has(header)) {
                     return '';
                 }
 
-                const isPrimary = header === 'Easel Board' || header === 'Poster Title' || header === 'Student(s)' || header === 'Poster Time';
+                const isPrimary = header === 'Easel Board' || header === 'Poster Title' || header === 'Students' || header === 'Poster Time';
                 const classes = [];
 
                 if (header === 'Poster Title') {
@@ -1295,10 +1589,10 @@ body.map-fullscreen .table-responsive {
                 if (header === 'Poster Time') {
                     classes.push('poster-time-column');
                 }
-                if (header === 'Student(s)') {
+                if (header === 'Students') {
                     classes.push('student-column');
                 }
-                if (header === 'Faculty/Mentor') {
+                if (header === 'Faculty') {
                     classes.push('faculty-column');
                 }
                 if (header === 'Poster Category') {
@@ -1324,19 +1618,25 @@ body.map-fullscreen .table-responsive {
                 return aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
             });
 
+            const colorColumnIndex = headerLabels.indexOf('Color');
+            const categoryColumnIndex = headerLabels.indexOf('Poster Category');
+
             let bodyMarkup = '<tbody>' + bodyRows.map(row => {
                 const easelBoard = row[1];
                 const posterTitle = row[2];
+                const posterColor = colorColumnIndex !== -1 ? row[colorColumnIndex] : '';
+                const posterCategory = categoryColumnIndex !== -1 ? (row[categoryColumnIndex] || '') : '';
+                const rowLabel = `View poster ${easelBoard}: ${posterTitle}`;
                 let rowHtml = `
-                    <tr data-easel="${easelBoard}" data-title="${posterTitle}">`;
+                    <tr data-easel="${easelBoard}" data-title="${posterTitle}" data-category="${escapeAttr(posterCategory)}" tabindex="0" role="button" aria-label="${escapeAttr(rowLabel)}">`;
 
                 row.forEach((cell, index) => {
                     const headerName = headerLabels[index];
-                    if (headerName === 'Mount ID' || headerName === 'Side') {
+                    if (HIDDEN_TABLE_COLUMNS.has(headerName)) {
                         return;
                     }
 
-                    const isPrimary = headerName === 'Easel Board' || headerName === 'Poster Title' || headerName === 'Student(s)' || headerName === 'Poster Time';
+                    const isPrimary = headerName === 'Easel Board' || headerName === 'Poster Title' || headerName === 'Students' || headerName === 'Poster Time';
                     const cellClasses = [];
 
                     if (headerName === 'Poster Title') {
@@ -1348,10 +1648,10 @@ body.map-fullscreen .table-responsive {
                     if (headerName === 'Poster Time') {
                         cellClasses.push('poster-time-column');
                     }
-                    if (headerName === 'Student(s)') {
+                    if (headerName === 'Students') {
                         cellClasses.push('student-column');
                     }
-                    if (headerName === 'Faculty/Mentor') {
+                    if (headerName === 'Faculty') {
                         cellClasses.push('faculty-column');
                     }
                     if (headerName === 'Poster Category') {
@@ -1362,10 +1662,9 @@ body.map-fullscreen .table-responsive {
                     }
 
                     if (headerName === 'Easel Board') {
-                        const colorIcon = createColorIcon(cell);
+                        const colorIcon = createColorIcon(posterColor, posterCategory);
                         const classes = ['easel-cell'].concat(cellClasses).join(' ').trim();
-                        const srLabel = cell ? `<span class="sr-only">${escapeHtml(cell)}</span>` : '';
-                        rowHtml += `<td class="${classes}">${colorIcon}${srLabel}</td>`;
+                        rowHtml += `<td class="${classes}">${colorIcon}${cell}</td>`;
                     } else {
                         rowHtml += `<td${cellClasses.length ? ` class="${cellClasses.join(' ')}"` : ''}>${cell}</td>`;
                     }
@@ -1396,6 +1695,15 @@ body.map-fullscreen .table-responsive {
                         applyRowSelection(this);
                     }
                 } else {
+                }
+            });
+
+            // Rows are made keyboard-operable (tabindex="0" role="button") so
+            // keyboard-only users can select a poster, not just mouse/touch users.
+            $('#tsvTable tbody tr').on('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                    e.preventDefault();
+                    $(this).trigger('click');
                 }
             });
 
@@ -1450,10 +1758,17 @@ body.map-fullscreen .table-responsive {
                     highlightedMarker.coordinates = computeMarkerCoordinates(highlightedMarker.marker, highlightedMarker.circle);
                 }
 
-                if (highlightedMarker.coordinates && window.posterMap && typeof window.posterMap.centerOnCoordinates === 'function') {
-                    window.posterMap.centerOnCoordinates(
-                        highlightedMarker.coordinates.x,
-                        highlightedMarker.coordinates.y,
+                if (highlightedMarker.coordinates && window.posterMap && typeof window.posterMap.setView === 'function') {
+                    // Pan-only fly-to (zoom unchanged) - shares the same
+                    // eased engine/curve as reset and the zoom buttons per
+                    // the zoom-easing PRD, instead of a bespoke pan-only
+                    // animation.
+                    window.posterMap.setView(
+                        {
+                            scale: window.posterMap.currentZoom,
+                            x: highlightedMarker.coordinates.x,
+                            y: highlightedMarker.coordinates.y
+                        },
                         {
                             animate: true,
                             onComplete: triggerTooltip
@@ -1655,78 +1970,215 @@ body.map-fullscreen .table-responsive {
         }
 
 
-        // Enhanced search functionality
+        // Enhanced search + category filtering
+        function rowMatchesCategoryFilter(row) {
+            if (selectedCategories.size === 0) return true;
+
+            const rawCategory = row.getAttribute('data-category') || '';
+            const rowCategories = rawCategory.split(',').map(c => c.trim()).filter(Boolean);
+
+            return rowCategories.some(cat => selectedCategories.has(cat));
+        }
+
+        function applyFilters() {
+            const searchInput = document.getElementById('searchbar');
+            const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            const table = document.getElementById('tsvTable');
+            const rows = table.querySelectorAll('tbody tr');
+
+            const visibleEasels = new Set();
+            const visibleRows = [];
+
+            rows.forEach(row => {
+                const matchesText = searchTerm === '' || row.textContent.toLowerCase().includes(searchTerm);
+                const matchesCategory = rowMatchesCategoryFilter(row);
+                const isVisible = matchesText && matchesCategory;
+
+                if (isVisible) {
+                    row.style.display = '';
+                    row.classList.remove('marker-faded');
+                    const easel = row.getAttribute('data-easel');
+                    if (easel) visibleEasels.add(easel);
+                    visibleRows.push(row);
+                } else {
+                    row.style.display = 'none';
+                    row.classList.add('marker-faded');
+                }
+            });
+
+            // Update marker visibility based on active filters
+            updateMarkerVisibility(visibleEasels);
+
+            const hasActiveFilter = searchTerm !== '' || selectedCategories.size > 0;
+
+            if (!hasActiveFilter) {
+                restoreMarkerOpacity();
+                cancelPendingAutoHighlight();
+                return;
+            }
+
+            scheduleAutoHighlight(visibleRows, searchTerm, searchInput);
+        }
+
+        function populateCategoryOptions(tableData) {
+            const optionsContainer = document.getElementById('categoryFilterOptions');
+            if (!optionsContainer) return;
+
+            const headers = tableData[0] || [];
+            const categoryIndex = headers.indexOf('Poster Category');
+
+            const categories = new Set();
+            if (categoryIndex !== -1) {
+                for (let i = 1; i < tableData.length; i++) {
+                    const raw = tableData[i][categoryIndex] || '';
+                    raw.split(',').forEach(part => {
+                        const trimmed = part.trim();
+                        if (trimmed) categories.add(trimmed);
+                    });
+                }
+            }
+
+            const sortedCategories = [...categories].sort((a, b) => a.localeCompare(b));
+
+            if (sortedCategories.length === 0) {
+                optionsContainer.innerHTML = '<div class="category-filter-empty">No categories available</div>';
+                return;
+            }
+
+            optionsContainer.innerHTML = sortedCategories.map(category => {
+                const safeValue = category.replace(/"/g, '&quot;');
+                const id = `category-filter-${category.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
+                return `
+                    <label class="category-filter-option" for="${id}">
+                        <input type="checkbox" id="${id}" value="${safeValue}">
+                        <span>${category}</span>
+                    </label>
+                `;
+            }).join('');
+
+            optionsContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        selectedCategories.add(this.value);
+                    } else {
+                        selectedCategories.delete(this.value);
+                    }
+                    updateCategoryFilterUI();
+                    applyFilters();
+                });
+            });
+        }
+
+        function updateCategoryFilterUI() {
+            const toggleBtn = document.getElementById('categoryFilterToggle');
+            const countBadge = document.getElementById('categoryFilterCount');
+            const count = selectedCategories.size;
+
+            if (countBadge) {
+                countBadge.textContent = String(count);
+                countBadge.hidden = count === 0;
+            }
+
+            if (toggleBtn) {
+                toggleBtn.classList.toggle('active', count > 0);
+            }
+        }
+
+        function initializeCategoryFilter() {
+            const toggleBtn = document.getElementById('categoryFilterToggle');
+            const dropdown = document.getElementById('categoryFilterDropdown');
+            const clearBtn = document.getElementById('categoryFilterClear');
+
+            if (!toggleBtn || !dropdown) return;
+
+            const closeDropdown = () => {
+                if (dropdown.hidden) return;
+                dropdown.hidden = true;
+                toggleBtn.setAttribute('aria-expanded', 'false');
+            };
+
+            toggleBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const isOpen = !dropdown.hidden;
+                if (isOpen) {
+                    closeDropdown();
+                } else {
+                    dropdown.hidden = false;
+                    toggleBtn.setAttribute('aria-expanded', 'true');
+                }
+            });
+
+            dropdown.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+
+            document.addEventListener('click', closeDropdown);
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && !dropdown.hidden) {
+                    closeDropdown();
+                    toggleBtn.focus();
+                }
+            });
+
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    selectedCategories.clear();
+                    document.querySelectorAll('#categoryFilterOptions input[type="checkbox"]').forEach(cb => {
+                        cb.checked = false;
+                    });
+                    updateCategoryFilterUI();
+                    applyFilters();
+                });
+            }
+        }
+
         function initializeSearch() {
             const searchInput = document.getElementById('searchbar');
             if (!searchInput) return;
-            
-            // Clear search when input is empty
+
+            const clearButton = document.getElementById('clearSearch');
+            const clearBottomContainer = document.getElementById('clearSearchBottomContainer');
+            const clearBottomButton = document.getElementById('clearSearchBottom');
+
             searchInput.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase().trim();
-                const table = document.getElementById('tsvTable');
-                const rows = table.querySelectorAll('tbody tr');
+                applyFilters();
 
-                const visibleEasels = new Set();
-                const visibleRows = [];
+                const hasSearch = this.value.length > 0;
 
-                rows.forEach(row => {
-                    if (searchTerm === '') {
-                        row.style.display = '';
-                        row.classList.remove('marker-faded');
-                        const easel = row.getAttribute('data-easel');
-                        if (easel) visibleEasels.add(easel);
-                        visibleRows.push(row);
-                        return;
-                    }
-
-                    const rowText = row.textContent.toLowerCase();
-
-                    if (rowText.includes(searchTerm)) {
-                        row.style.display = '';
-                        row.classList.remove('marker-faded');
-                        const easel = row.getAttribute('data-easel');
-                        if (easel) visibleEasels.add(easel);
-                        visibleRows.push(row);
-                    } else {
-                        row.style.display = 'none';
-                        row.classList.add('marker-faded');
-                    }
-                });
-
-                // Update marker visibility based on search
-                updateMarkerVisibility(visibleEasels);
-
-                // Restore marker opacity when search is cleared
-                if (searchTerm === '') {
-                    restoreMarkerOpacity();
-                    cancelPendingAutoHighlight();
-                    return;
+                if (clearButton) {
+                    clearButton.style.display = hasSearch ? 'inline-flex' : 'none';
                 }
 
-                scheduleAutoHighlight(visibleRows, searchTerm, searchInput);
+                // Redundant "Clear search results" button below the last row -
+                // the X inside the search bar is small and easy to miss,
+                // especially on mobile.
+                if (clearBottomContainer) {
+                    clearBottomContainer.hidden = !hasSearch;
+                }
             });
 
             // Also handle keyup for immediate response
             searchInput.addEventListener('keyup', function() {
                 this.dispatchEvent(new Event('input'));
             });
-            
+
             // Handle clear button
-            const clearButton = document.getElementById('clearSearch');
             if (clearButton) {
                 clearButton.addEventListener('click', function() {
                     resetSearch();
                 });
-                
-                // Show/hide clear button based on input content
-                searchInput.addEventListener('input', function() {
-                    if (this.value.length > 0) {
-                        clearButton.style.display = 'inline-flex';
-                    } else {
-                        clearButton.style.display = 'none';
-                    }
+            }
+
+            if (clearBottomButton) {
+                clearBottomButton.addEventListener('click', function() {
+                    resetSearch();
+                    searchInput.focus();
                 });
             }
+
+            initializeCategoryFilter();
         }
 
         function cancelPendingAutoHighlight() {
@@ -1781,6 +2233,7 @@ body.map-fullscreen .table-responsive {
 
                 state.circles.push({
                     circle: markerData.circle,
+                    text: markerData.text,
                     shouldShow: shouldShowCircle
                 });
 
@@ -1800,13 +2253,16 @@ body.map-fullscreen .table-responsive {
                     markerGroup.classList.add('marker-hidden');
                 }
 
-                state.circles.forEach(({ circle, shouldShow }) => {
-                    if (!circle) {
-                        return;
+                state.circles.forEach(({ circle, text, shouldShow }) => {
+                    if (circle) {
+                        circle.style.display = shouldShow ? '' : 'none';
+                        circle.classList.toggle('marker-hidden', !shouldShow);
                     }
 
-                    circle.style.display = shouldShow ? '' : 'none';
-                    circle.classList.toggle('marker-hidden', !shouldShow);
+                    if (text) {
+                        text.style.display = shouldShow ? '' : 'none';
+                        text.classList.toggle('marker-hidden', !shouldShow);
+                    }
                 });
             });
         }
@@ -1822,12 +2278,15 @@ body.map-fullscreen .table-responsive {
         }
 
         function loadTableData() {
-            fetch('data/Poster_Research_Scholarships.tsv')
+            fetch('data/poster-data.tsv')
                 .then(response => response.text())
                 .then(data => {
-                    const lines = data.trim().split('\n');
-                    const tableData = lines.map(line => line.split('\t'));
-                    
+                    const tableData = LayoutAPI.prototype.parseTsvText(data);
+
+                    console.log('=== TABLE DATA DEBUG ===');
+                    console.log('Table data loaded:', tableData.length, 'rows');
+                    console.log('Headers:', tableData[0]);
+
                     // Check easel board IDs in the table data
                     const easelBoardColumnIndex = tableData[0].indexOf('Easel Board');
                     if (easelBoardColumnIndex !== -1) {
@@ -1849,6 +2308,7 @@ body.map-fullscreen .table-responsive {
                     }
                     
                     displayTable(tableData);
+                    populateCategoryOptions(tableData);
                     initializeSearch();
                 })
                 .catch(error => {
@@ -1875,104 +2335,27 @@ body.map-fullscreen .table-responsive {
             // Initialize the layout API
             const layout = window.posterMap.initializeLayoutAPI();
             
-            // Add Parsons building using Layout API (updated version with integrated garden boxes)
+            // Add the full site map as a single pre-rendered SVG (replaces the
+            // separate Parsons/Sprague/Strauss Plaza/Jacobs-Keck pieces). This SVG
+            // carries its own colors, so no style.fill override is applied.
+            // Placed at its native size/position for a first look; not yet
+            // fine-tuned against the mount coordinate system.
             layout.addSVG({
-                id: 'parsons-building',
-                svgFile: 'assets/svg/Parsons.svg',
-                position: { x: 150, y: 40 }, // Same relative distance from Strauss as Jacobs Keck
-                style: { fill: '#C3BAA8' }, // Warm beige
+                id: 'strauss-plaza-map',
+                svgFile: 'assets/svg/strauss-plaza.svg',
+                position: { x: 0, y: 0 },
                 interactive: false
-                });
+            });
 
-                // Add "Parsons" label directly to SVG
-                const parsonsLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                parsonsLabel.setAttribute('x', '570');
-                parsonsLabel.setAttribute('y', '100');
-                parsonsLabel.setAttribute('fill', '#000');
-                parsonsLabel.setAttribute('font-size', '32px');
-                parsonsLabel.setAttribute('font-family', 'Arial, sans-serif');
-                parsonsLabel.setAttribute('font-weight', 'bold');
-                parsonsLabel.style.textRendering = 'optimizeLegibility';
-                parsonsLabel.style.fontSmooth = 'antialiased';
-                parsonsLabel.setAttribute('text-anchor', 'middle');
-                parsonsLabel.setAttribute('dominant-baseline', 'central');
-                parsonsLabel.textContent = 'Parsons';
-                parsonsLabel.setAttribute('id', 'parsons-label');
-                window.posterMap.svg.appendChild(parsonsLabel);
-                
-                // Add Strauss Plaza positioned at specified coordinates, centered relative to buildings
-                layout.addSVG({
-                    id: 'strauss-plaza',
-                    svgFile: 'assets/svg/Strauss Plaza.svg',
-                    position: { x: 226, y: 474 }, // Vertically centered between Parsons and Jacobs Keck
-                    style: { fill: '#EBDEC2', stroke: '#D4C4A8', strokeWidth: '1' }, // Warm beige color for plaza with subtle outline
-                    interactive: false
-                });
-                
-                // Add Sprague building flush against left border, scaled to match Strauss Plaza height
-                layout.addSVG({
-                    id: 'sprague-building',
-                    svgFile: 'assets/svg/Sprague.svg',
-                    position: { x: 0, y: 474 }, // Same y-position as Strauss Plaza for perfect alignment
-                    transform: { scaleY: 392/376 }, // Scale height to match Strauss Plaza (392px)
-                    style: { fill: '#C3BAA8' }, // Warm beige
-                    interactive: false
-                });
-
-                // Add "Sprague" label directly to SVG (rotated 90 degrees clockwise)
-                const spragueLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                spragueLabel.setAttribute('x', '100');
-                spragueLabel.setAttribute('y', '673');
-                spragueLabel.setAttribute('fill', '#000');
-                spragueLabel.setAttribute('font-size', '32px');
-                spragueLabel.setAttribute('font-family', 'Arial, sans-serif');
-                spragueLabel.setAttribute('font-weight', 'bold');
-                spragueLabel.style.textRendering = 'optimizeLegibility';
-                spragueLabel.style.fontSmooth = 'antialiased';
-                spragueLabel.setAttribute('text-anchor', 'middle');
-                spragueLabel.setAttribute('dominant-baseline', 'central');
-                spragueLabel.setAttribute('transform', 'rotate(90 100 673)');
-                spragueLabel.textContent = 'Sprague';
-                spragueLabel.setAttribute('id', 'sprague-label');
-                window.posterMap.svg.appendChild(spragueLabel);
-                
-                // Add Jacobs Keck building
-                layout.addSVG({
-                    id: 'jacobs-keck-building',
-                    svgFile: 'assets/svg/jacobs-keck.svg',
-                    position: { x: 150, y: 920 }, // Shifted even further downward
-                    style: { fill: '#C3BAA8' }, // Warm beige
-                    interactive: false
-                });
-
-                // Add "Jacobs/Keck" label directly to SVG
-                const jacobsKeckLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                jacobsKeckLabel.setAttribute('x', '570');
-                jacobsKeckLabel.setAttribute('y', '1235');
-                jacobsKeckLabel.setAttribute('fill', '#000');
-                jacobsKeckLabel.setAttribute('font-size', '32px');
-                jacobsKeckLabel.setAttribute('font-family', 'Arial, sans-serif');
-                jacobsKeckLabel.setAttribute('font-weight', 'bold');
-                jacobsKeckLabel.style.textRendering = 'optimizeLegibility';
-                jacobsKeckLabel.style.fontSmooth = 'antialiased';
-                jacobsKeckLabel.setAttribute('text-anchor', 'middle');
-                jacobsKeckLabel.setAttribute('dominant-baseline', 'central');
-                jacobsKeckLabel.textContent = 'Jacobs/Keck';
-                jacobsKeckLabel.setAttribute('id', 'jacobs-keck-label');
-                window.posterMap.svg.appendChild(jacobsKeckLabel);
-                
-                // Load poster data from TSV files - separate poster and mount data
-                layout.loadPostersFromTSV('data/Poster_Research_Scholarships.tsv', 'data/Mounts.tsv', {
-                    startX: 300,           // Starting X coordinate (fallback for grid)
-                    startY: 300,           // Starting Y coordinate (fallback for grid)
-                    spacing: 70,           // Space between mounts (fallback for grid)
-                    postersPerRow: 8,      // Number of mounts per row (fallback for grid)
-                    alternateOrientation: true  // Mix vertical and horizontal mounts (fallback for grid)
-                });
+                // Load poster data from the combined poster-data.tsv (poster info,
+                // mount position/orientation, and marker color all in one file)
+                layout.loadPostersFromDataTSV('data/poster-data.tsv');
 
                 // Register markers for table interaction
-                function rebuildMarkerRegistry() {
+                function rebuildMarkerRegistry(contextLabel = 'initial') {
+                    console.log(`=== MARKER REGISTRATION (${contextLabel}) ===`);
                     if (!window.layout || !window.layout.layoutElements || window.layout.layoutElements.size === 0) {
+                        console.log('Layout elements unavailable; skipping marker registration');
                         return false;
                     }
 
@@ -1988,10 +2371,12 @@ body.map-fullscreen .table-responsive {
 
                             if (element.sideA?.easelBoard && element.sideA.easelBoard !== 'Unassigned') {
                                 const sideACircle = markerGroup.querySelector('circle[data-side="A"][data-easel]') || markerGroup.querySelector('circle[data-side="A"]');
+                                const sideAText = markerGroup.querySelector('text[data-side="A"]');
                                 if (sideACircle) {
                                     nextMarkers.push({
                                         marker: markerGroup,
                                         circle: sideACircle,
+                                        text: sideAText,
                                         easelBoardId: element.sideA.easelBoard,
                                         mountId: id,
                                         side: 'A',
@@ -2002,10 +2387,12 @@ body.map-fullscreen .table-responsive {
 
                             if (element.sideB?.easelBoard && element.sideB.easelBoard !== 'Unassigned') {
                                 const sideBCircle = markerGroup.querySelector('circle[data-side="B"][data-easel]') || markerGroup.querySelector('circle[data-side="B"]');
+                                const sideBText = markerGroup.querySelector('text[data-side="B"]');
                                 if (sideBCircle) {
                                     nextMarkers.push({
                                         marker: markerGroup,
                                         circle: sideBCircle,
+                                        text: sideBText,
                                         easelBoardId: element.sideB.easelBoard,
                                         mountId: id,
                                         side: 'B',
@@ -2062,15 +2449,79 @@ body.map-fullscreen .table-responsive {
                         }
                     });
 
+                    console.log(`Registered ${allMarkers.length} markers for table interaction`);
+                    if (allMarkers.length > 0) {
+                        console.log('Sample marker data:', allMarkers[0]);
+                        console.log('All easel board IDs:', allMarkers.map(m => m.easelBoardId));
+                    }
+
                     return allMarkers.length > 0;
                 }
 
-                rebuildMarkerRegistry();
+                rebuildMarkerRegistry('initial');
+
+                // The map starts hidden behind a loading overlay so the jump
+                // from the full zoomed-out canvas to the fitted default zoom
+                // (see fitToContent) happens off-screen instead of as a visible
+                // jerk. This reveals it once the fitted view is ready - with a
+                // hard fallback so the overlay can never get stuck covering
+                // (and blocking clicks/taps on) the map if fitting fails.
+                let contentFitted = false;
+                let mapRevealed = false;
+
+                function revealMap() {
+                    if (mapRevealed) {
+                        return;
+                    }
+                    mapRevealed = true;
+                    const overlay = document.getElementById('mapLoadingOverlay');
+                    if (overlay) {
+                        overlay.classList.add('map-loading-overlay--hidden');
+                    }
+                }
+
+                // Zoom limits (min = fit-whole-map, max = label reaches
+                // ~40px) depend on the map's rendered content and container
+                // size, so they're computed fresh right before fitToContent
+                // uses them - otherwise fitToContent would clamp against the
+                // constructor's placeholder minZoom/maxZoom instead of the
+                // real ones for this layout.
+                function refitMapView() {
+                    if (!window.posterMap) {
+                        return false;
+                    }
+                    if (typeof window.posterMap.recalculateZoomLimits === 'function') {
+                        window.posterMap.recalculateZoomLimits();
+                    }
+                    if (typeof window.posterMap.fitToContent === 'function') {
+                        return window.posterMap.fitToContent();
+                    }
+                    return false;
+                }
+
+                contentFitted = refitMapView();
+                if (contentFitted) {
+                    revealMap();
+                }
 
                 // Try to register markers again after a delay in case the layout is still loading
                 setTimeout(() => {
-                    rebuildMarkerRegistry();
+                    if (!rebuildMarkerRegistry('delayed')) {
+                        console.log('Layout elements still not available after delay');
+                    }
+
+                    // Only (re)fit if the earlier attempt didn't find content yet -
+                    // avoids yanking the view out from under a user who's already
+                    // panned/zoomed on their own.
+                    if (!contentFitted) {
+                        contentFitted = refitMapView();
+                    }
+                    revealMap();
                 }, 2000);
+
+                // Belt-and-suspenders: never leave the map hidden/unclickable
+                // indefinitely even if the above somehow never fires.
+                setTimeout(revealMap, 4000);
 
                 // Make layout API available globally for easy testing
                 window.layout = layout;
@@ -2093,7 +2544,30 @@ body.map-fullscreen .table-responsive {
         // Monitor zoom changes for map only
         window.addEventListener('resize', preventMapZoomOut);
         window.addEventListener('orientationchange', preventMapZoomOut);
-        
+
+        // Zoom limits (min = fit-whole-map, max = label reaches ~40px)
+        // depend on the map container's current rendered size, so they need
+        // recomputing when that size changes. Debounced since resize fires
+        // rapidly; deliberately does NOT re-run fitToContent - that would
+        // yank the view back to default out from under a user who's already
+        // panned/zoomed on their own (fullscreen toggle is handled
+        // separately, synchronously, in toggleFullScreen itself since it
+        // doesn't fire a window resize event).
+        let zoomLimitsResizeTimer = null;
+        function scheduleZoomLimitsRecalc() {
+            if (zoomLimitsResizeTimer) {
+                clearTimeout(zoomLimitsResizeTimer);
+            }
+            zoomLimitsResizeTimer = setTimeout(() => {
+                zoomLimitsResizeTimer = null;
+                if (window.posterMap && typeof window.posterMap.recalculateZoomLimits === 'function') {
+                    window.posterMap.recalculateZoomLimits();
+                }
+            }, 150);
+        }
+        window.addEventListener('resize', scheduleZoomLimitsRecalc);
+        window.addEventListener('orientationchange', scheduleZoomLimitsRecalc);
+
         // Start initialization when DOM is ready
         document.addEventListener('DOMContentLoaded', () => {
             console.log('made by jon ebueng from CIS :)');

@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mount Editor (dev tool)</title>
+<style>
+    :root {
+        --bg: #f4f3ef;
+        --panel: #ffffff;
+        --border: #d8d5cc;
+        --ink: #2a2a2a;
+        --muted: #6b6b6b;
+        --accent: #1E88E5;
+        --accent-2: #FB8C00;
+        --danger: #c0392b;
+        --warn-bg: #fff3cd;
+        --warn-border: #e6c465;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+    }
+    header.toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+    }
+    header.toolbar h1 {
+        font-size: 16px;
+        margin: 0;
+        margin-right: 8px;
+        white-space: nowrap;
+    }
+    header.toolbar .sub {
+        font-size: 12px;
+        color: var(--muted);
+        width: 100%;
+        margin-top: -6px;
+    }
+    .toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+    }
+    button {
+        font: inherit;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: #fafafa;
+        cursor: pointer;
+    }
+    button:hover { background: #eee; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button:disabled:hover { background: #fafafa; }
+    button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+        font-weight: 600;
+    }
+    button.primary:hover { background: #1669b3; }
+    button.danger {
+        background: #fde8e6;
+        border-color: #f0b8b2;
+        color: var(--danger);
+    }
+    button.danger:hover { background: #fbd3ce; }
+    label.check {
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    #statusBanner {
+        background: var(--warn-bg);
+        border-bottom: 1px solid var(--warn-border);
+        padding: 10px 16px;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    #statusBanner code {
+        background: rgba(0,0,0,0.06);
+        padding: 1px 5px;
+        border-radius: 4px;
+    }
+    .main {
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        align-items: flex-start;
+    }
+    .map-panel {
+        flex: 1 1 auto;
+        min-width: 0;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .map-scroll {
+        overflow: auto;
+        height: 72vh;
+        background: #eceae3;
+    }
+    #posterMap {
+        display: block;
+        cursor: crosshair;
+    }
+    #posterMap.pan-cursor { cursor: default; }
+    .mount-pin { cursor: grab; touch-action: none; }
+    .mount-pin:active { cursor: grabbing; }
+    .mount-pin .pin-label {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.1s ease;
+    }
+    .mount-pin:hover .pin-label,
+    .mount-pin.selected .pin-label {
+        opacity: 1;
+    }
+    .mount-pin .selected-ring { display: none; }
+    .mount-pin.selected .selected-ring { display: block; }
+    .mount-pin .flash-ring { opacity: 0; }
+    .mount-pin.flash .flash-ring { animation: flash-pulse 0.9s ease-out 2; }
+    @keyframes flash-pulse {
+        0% { r: 11; opacity: 1; }
+        100% { r: 26; opacity: 0; }
+    }
+    .side-panel {
+        flex: 0 0 320px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    section.editor, section.unplaced, section.table-panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    section h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin: 0 0 8px 0;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
+    #editorForm label, #multiEditorForm label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 8px;
+    }
+    #editorForm input, #editorForm select,
+    #multiEditorForm input, #multiEditorForm select {
+        display: block;
+        width: 100%;
+        margin-top: 3px;
+        padding: 6px 8px;
+        font-size: 14px;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+    }
+    .editor-buttons { margin-top: 12px; }
+    .multi-summary {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 0 0 10px 0;
+        line-height: 1.5;
+    }
+    .align-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+    .align-grid button { font-size: 12px; padding: 6px 4px; }
+    .align-grid button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+    .align-group-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        margin: 10px 0 4px;
+    }
+    .align-group-label:first-child { margin-top: 0; }
+    .marquee-rect {
+        fill: rgba(30, 136, 229, 0.12);
+        stroke: #1E88E5;
+        stroke-width: 1.5;
+        stroke-dasharray: 5 3;
+        pointer-events: none;
+    }
+    .xref {
+        margin-top: 12px;
+        border-top: 1px dashed var(--border);
+        padding-top: 10px;
+        font-size: 12px;
+    }
+    .xref .poster-card {
+        background: #f7f6f2;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 8px;
+        margin-bottom: 6px;
+    }
+    .xref .poster-card .title { font-weight: 600; font-size: 12.5px; }
+    .xref .warn {
+        background: var(--warn-bg);
+        border: 1px solid var(--warn-border);
+        border-radius: 6px;
+        padding: 6px 8px;
+        margin-bottom: 6px;
+    }
+    .unplaced-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        max-height: 160px;
+        overflow: auto;
+    }
+    .chip {
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #eef4fb;
+        border: 1px solid #bcd7f2;
+        cursor: pointer;
+    }
+    .chip.pending {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+    .table-panel { flex-basis: 100%; }
+    .table-scroll { max-height: 320px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+        position: sticky;
+        top: 0;
+        background: #f0efe9;
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--muted);
+    }
+    tbody td {
+        padding: 4px 8px;
+        border-bottom: 1px solid #ececec;
+        vertical-align: middle;
+    }
+    tbody tr.selected-row { background: #eaf3fc; }
+    tbody input, tbody select {
+        width: 100%;
+        font: inherit;
+        font-size: 13px;
+        padding: 3px 5px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: transparent;
+    }
+    tbody input:hover, tbody select:hover,
+    tbody input:focus, tbody select:focus {
+        border-color: var(--border);
+        background: white;
+    }
+    tbody input.id-field { font-weight: 600; }
+    tbody input.bad { outline: 2px solid var(--danger); }
+    .row-actions { display: flex; gap: 4px; white-space: nowrap; }
+    .row-actions button { padding: 3px 7px; font-size: 12px; }
+    .badge {
+        display: inline-block;
+        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: #eee;
+        color: var(--muted);
+    }
+    .badge.none { background: var(--warn-bg); color: #8a6d1c; }
+    #modalOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.35);
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
+    }
+    #modalOverlay:not([hidden]) {
+        display: flex;
+    }
+    #modalBox {
+        background: var(--panel);
+        border-radius: 8px;
+        padding: 18px 20px;
+        max-width: 420px;
+        width: 100%;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    #modalMessage {
+        margin: 0 0 16px 0;
+        font-size: 14px;
+        line-height: 1.5;
+        white-space: pre-line;
+    }
+    .modal-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    @media (max-width: 900px) {
+        .main { flex-direction: column; }
+        .side-panel { flex-basis: auto; width: 100%; }
+    }
+</style>
+</head>
+<body>
+
+<header class="toolbar">
+    <h1>Mount Editor — dev tool</h1>
+    <span class="sub">Click the map to place mount points, drag an empty area to select a group, then export an updated <code>poster-data.tsv</code> to swap in. Shift/Cmd-click adds to a selection; arrow keys nudge it (Shift = 10px); Cmd/Ctrl-Z undoes.</span>
+    <div class="toolbar-actions">
+        <label class="check"><input type="checkbox" id="addModeToggle" checked> Add-mount mode</label>
+        <button id="undoBtn" title="Undo (Cmd/Ctrl-Z)">↶ Undo</button>
+        <button id="redoBtn" title="Redo (Cmd/Ctrl-Shift-Z)">↷ Redo</button>
+        <button id="zoomOutBtn" title="Zoom out">－</button>
+        <button id="zoomResetBtn" title="Reset zoom">100%</button>
+        <button id="zoomInBtn" title="Zoom in">＋</button>
+        <button id="sortBtn" title="Sort table by Mount ID">Sort by ID</button>
+        <button id="importBtn" title="Load a poster-data.tsv file">Import TSV</button>
+        <input type="file" id="importFile" accept=".tsv,text/tab-separated-values,text/plain" hidden>
+        <button id="exportBtn" class="primary" title="Download poster-data.tsv with the current mount positions">Export poster-data.tsv</button>
+    </div>
+</header>
+
+<div id="statusBanner" hidden></div>
+
+<div class="main">
+    <div class="map-panel">
+        <div class="map-scroll" id="mapScroll">
+            <svg id="posterMap" viewBox="0 0 1078 1558" width="1078" height="1558" xmlns="http://www.w3.org/2000/svg">
+                <rect width="1078" height="1558" fill="#F8F6F0" stroke="#606060"/>
+                <g id="poster-areas"></g>
+                <g id="markers"></g>
+            </svg>
+        </div>
+    </div>
+
+    <aside class="side-panel">
+        <section class="editor">
+            <h2>Selected mount</h2>
+            <p class="hint" id="editorEmptyHint">Click an existing pin to edit it, or (with Add-mount mode on) click an empty spot on the map to place a new one.</p>
+            <div id="editorForm" hidden>
+                <label>Mount ID
+                    <input type="text" id="fieldMountId" list="unplacedIdsList" autocomplete="off" spellcheck="false">
+                </label>
+                <label>X coordinate
+                    <input type="number" id="fieldX" step="1">
+                </label>
+                <label>Y coordinate
+                    <input type="number" id="fieldY" step="1">
+                </label>
+                <label>Orientation
+                    <select id="fieldOrientation">
+                        <option value="vertical">vertical</option>
+                        <option value="horizontal">horizontal</option>
+                    </select>
+                </label>
+                <div class="editor-buttons">
+                    <button id="deleteMountBtn" class="danger">Delete this mount</button>
+                </div>
+                <div class="xref" id="xrefBox"></div>
+            </div>
+            <div id="multiEditorForm" hidden>
+                <p class="multi-summary" id="multiSelectSummary"></p>
+                <p class="align-group-label">Align</p>
+                <div class="align-grid">
+                    <button type="button" data-align="left" title="Same X, leftmost">Left</button>
+                    <button type="button" data-align="centerX" title="Same X, average">Center X</button>
+                    <button type="button" data-align="right" title="Same X, rightmost">Right</button>
+                    <button type="button" data-align="top" title="Same Y, topmost">Top</button>
+                    <button type="button" data-align="centerY" title="Same Y, average">Center Y</button>
+                    <button type="button" data-align="bottom" title="Same Y, bottommost">Bottom</button>
+                </div>
+                <p class="align-group-label">Distribute (3+ selected)</p>
+                <div class="align-grid" style="grid-template-columns: 1fr 1fr;">
+                    <button type="button" data-distribute="x">Evenly (X)</button>
+                    <button type="button" data-distribute="y">Evenly (Y)</button>
+                </div>
+                <label>Set orientation for all selected
+                    <select id="bulkOrientation">
+                        <option value="">— no change —</option>
+                        <option value="vertical">vertical</option>
+                        <option value="horizontal">horizontal</option>
+                    </select>
+                </label>
+                <div class="editor-buttons">
+                    <button id="deleteSelectedBtn" class="danger">Delete selected mounts</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="unplaced">
+            <h2>Unplaced mount IDs <span id="unplacedCount"></span></h2>
+            <p class="hint">Referenced in poster-data.tsv but not yet in this list. Click one, then click the map to place it there.</p>
+            <div class="unplaced-list" id="unplacedList"></div>
+        </section>
+    </aside>
+</div>
+
+<section class="table-panel" style="margin: 0 12px 12px;">
+    <h2>All mounts (<span id="mountCount">0</span>)</h2>
+    <div class="table-scroll">
+        <table id="mountsTable">
+            <thead>
+                <tr>
+                    <th style="width:22%">Mount ID</th>
+                    <th style="width:14%">X</th>
+                    <th style="width:14%">Y</th>
+                    <th style="width:16%">Orientation</th>
+                    <th style="width:16%">Posters</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="mountsTableBody"></tbody>
+        </table>
+    </div>
+</section>
+
+<datalist id="unplacedIdsList"></datalist>
+
+<div id="modalOverlay" hidden>
+    <div id="modalBox" role="alertdialog" aria-modal="true">
+        <p id="modalMessage"></p>
+        <div class="modal-buttons">
+            <button type="button" id="modalCancelBtn">Cancel</button>
+            <button type="button" id="modalOkBtn" class="primary">OK</button>
+        </div>
+    </div>
+</div>
+
+<script src="../assets/js/layout-api.js"></script>
+<script>
+(function () {
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const BASE_W = 1078, BASE_H = 1558;
+
+    const svg = document.getElementById('posterMap');
+    const posterAreasGroup = document.getElementById('poster-areas');
+    const markersGroup = document.getElementById('markers');
+    const mapScroll = document.getElementById('mapScroll');
+    const statusBanner = document.getElementById('statusBanner');
+
+    const addModeToggle = document.getElementById('addModeToggle');
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+    const zoomResetBtn = document.getElementById('zoomResetBtn');
+    const sortBtn = document.getElementById('sortBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importFile = document.getElementById('importFile');
+    const exportBtn = document.getElementById('exportBtn');
+
+    const editorEmptyHint = document.getElementById('editorEmptyHint');
+    const editorForm = document.getElementById('editorForm');
+    const fieldMountId = document.getElementById('fieldMountId');
+    const fieldX = document.getElementById('fieldX');
+    const fieldY = document.getElementById('fieldY');
+    const fieldOrientation = document.getElementById('fieldOrientation');
+    const deleteMountBtn = document.getElementById('deleteMountBtn');
+    const xrefBox = document.getElementById('xrefBox');
+
+    const multiEditorForm = document.getElementById('multiEditorForm');
+    const multiSelectSummary = document.getElementById('multiSelectSummary');
+    const bulkOrientation = document.getElementById('bulkOrientation');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+    const unplacedList = document.getElementById('unplacedList');
+    const unplacedCount = document.getElementById('unplacedCount');
+    const unplacedIdsList = document.getElementById('unplacedIdsList');
+
+    const mountsTableBody = document.getElementById('mountsTableBody');
+    const mountCountEl = document.getElementById('mountCount');
+
+    let mounts = [];           // { _key, id, x, y, orientation }
+    let posterRows = [];       // full parsed poster-data.tsv rows, kept for lossless export
+    let postersByMountId = new Map();
+    let nextKey = 1;
+    let selectedKeys = new Set();
+    let pendingMountId = null;
+    let zoomFactor = 1;
+
+    // Rebuilds postersByMountId and the editable `mounts` list from a fresh set of
+    // poster-data.tsv rows (used at boot and on Import). A mount counts as "placed"
+    // if any of its poster rows already has X/Y coordinates.
+    function applyPosterRows(rows) {
+        posterRows = rows;
+        postersByMountId = new Map();
+        const mountMap = new Map();
+
+        rows.forEach(p => {
+            if (!p.mountId) return;
+            if (!postersByMountId.has(p.mountId)) postersByMountId.set(p.mountId, []);
+            postersByMountId.get(p.mountId).push(p);
+
+            if (!mountMap.has(p.mountId) && !Number.isNaN(p.xCoord) && !Number.isNaN(p.yCoord)) {
+                mountMap.set(p.mountId, { _key: nextKey++, id: p.mountId, x: p.xCoord, y: p.yCoord, orientation: p.orientation });
+            }
+        });
+
+        mounts = [...mountMap.values()];
+    }
+
+    // TSV field escaping: quote (and double-escape internal quotes) any field
+    // containing a comma, quote, tab or newline - matches how poster-data.tsv
+    // already comes quoted (e.g. multi-name Students/Faculty fields).
+    function tsvField(value) {
+        const str = value == null ? '' : String(value);
+        return /[",\t\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+    }
+    let isDirty = false;
+    let dragState = null;
+    let marqueeState = null;
+    let editPinsLayer = null;
+    let marqueeRectEl = null;
+    let history = null;
+    let activeFieldEdit = null;
+
+    function escapeHtml(str) {
+        return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function showBanner(html) {
+        statusBanner.innerHTML = html;
+        statusBanner.hidden = false;
+    }
+
+    function markDirty() { isDirty = true; }
+
+    // ---------- Undo/redo history engine ----------
+    // Ported from justdisplaysomething/src/editor/history (patch-based undo/redo:
+    // applyPatch/applyPatches, transaction builder, createHistoryEngine), adapted
+    // to this tool's flat mounts-array state instead of the schedule/entry model.
+    function applyPatch(state, patch) {
+        switch (patch.op) {
+            case 'add':
+                return state.some(m => m._key === patch.key) ? state : [...state, patch.value];
+            case 'remove':
+                return state.filter(m => m._key !== patch.key);
+            case 'replace':
+                if (patch.path === '__root__') {
+                    return state.map(m => m._key === patch.key ? patch.newValue : m);
+                }
+                return state.map(m => m._key === patch.key ? { ...m, [patch.path]: patch.newValue } : m);
+            case 'replaceAll':
+                return patch.newValue;
+            default:
+                return state;
+        }
+    }
+    function applyPatches(state, patches) {
+        return patches.reduce(applyPatch, state);
+    }
+
+    function createHistoryId() {
+        return 'hist_' + Math.random().toString(36).slice(2, 11);
+    }
+    function createTransaction(label) {
+        return { label, forward: [], inverse: [] };
+    }
+    function addToTransaction(tx, forward, inverse) {
+        tx.forward.push(forward);
+        tx.inverse.unshift(inverse);
+        return tx;
+    }
+    function buildHistoryEntry(tx) {
+        if (tx.forward.length === 0) return null;
+        return { id: createHistoryId(), label: tx.label, timestamp: Date.now(), forward: tx.forward, inverse: tx.inverse };
+    }
+
+    function replaceFieldPatches(key, path, oldValue, newValue) {
+        return {
+            forward: { op: 'replace', key, path, oldValue, newValue },
+            inverse: { op: 'replace', key, path, oldValue: newValue, newValue: oldValue }
+        };
+    }
+    function addMountPatchesFor(mount) {
+        return {
+            forward: { op: 'add', key: mount._key, value: mount },
+            inverse: { op: 'remove', key: mount._key, oldValue: mount }
+        };
+    }
+    function removeMountPatchesFor(mount) {
+        return {
+            forward: { op: 'remove', key: mount._key, oldValue: mount },
+            inverse: { op: 'add', key: mount._key, value: mount }
+        };
+    }
+    function replaceAllPatches(oldState, newState) {
+        return {
+            forward: { op: 'replaceAll', oldValue: oldState, newValue: newState },
+            inverse: { op: 'replaceAll', oldValue: newState, newValue: oldState }
+        };
+    }
+
+    function createHistoryEngine(initialState) {
+        let store = { present: initialState, undoStack: [], redoStack: [] };
+        const listeners = new Set();
+        function notify() { listeners.forEach(fn => fn(store.present)); }
+        function execute(entry) {
+            if (!entry) return;
+            store = {
+                present: applyPatches(store.present, entry.forward),
+                undoStack: [...store.undoStack, entry],
+                redoStack: []
+            };
+            notify();
+        }
+        function undo() {
+            const entry = store.undoStack[store.undoStack.length - 1];
+            if (!entry) return;
+            store = {
+                present: applyPatches(store.present, [...entry.inverse].reverse()),
+                undoStack: store.undoStack.slice(0, -1),
+                redoStack: [...store.redoStack, entry]
+            };
+            notify();
+        }
+        function redo() {
+            const entry = store.redoStack[store.redoStack.length - 1];
+            if (!entry) return;
+            store = {
+                present: applyPatches(store.present, entry.forward),
+                undoStack: [...store.undoStack, entry],
+                redoStack: store.redoStack.slice(0, -1)
+            };
+            notify();
+        }
+        function canUndo() { return store.undoStack.length > 0; }
+        function canRedo() { return store.redoStack.length > 0; }
+        function replaceState(newState) {
+            store = { present: newState, undoStack: [], redoStack: [] };
+            notify();
+        }
+        function getState() { return store.present; }
+        function getLastUndoLabel() { const e = store.undoStack[store.undoStack.length - 1]; return e ? e.label : null; }
+        function getLastRedoLabel() { const e = store.redoStack[store.redoStack.length - 1]; return e ? e.label : null; }
+        function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+        return { execute, undo, redo, canUndo, canRedo, replaceState, getState, getLastUndoLabel, getLastRedoLabel, subscribe };
+    }
+
+    function updateUndoRedoButtons() {
+        undoBtn.disabled = !history.canUndo();
+        redoBtn.disabled = !history.canRedo();
+        const uLabel = history.getLastUndoLabel();
+        const rLabel = history.getLastRedoLabel();
+        undoBtn.title = 'Undo (Cmd/Ctrl-Z)' + (uLabel ? `: ${uLabel}` : '');
+        redoBtn.title = 'Redo (Cmd/Ctrl-Shift-Z)' + (rLabel ? `: ${rLabel}` : '');
+    }
+
+    function pruneSelection() {
+        const existing = new Set(mounts.map(m => m._key));
+        selectedKeys.forEach(k => { if (!existing.has(k)) selectedKeys.delete(k); });
+    }
+
+    function onHistoryChange(state) {
+        mounts = state;
+        pruneSelection();
+        renderAllPins();
+        renderTable();
+        renderEditorPanel();
+        renderUnplacedList();
+        updateUndoRedoButtons();
+        isDirty = history.canUndo();
+    }
+
+    undoBtn.addEventListener('click', () => history.undo());
+    redoBtn.addEventListener('click', () => history.redo());
+
+    function beginFieldEdit(key, path) {
+        const m = mounts.find(mm => mm._key === key);
+        if (!m) { activeFieldEdit = null; return; }
+        activeFieldEdit = { key, path, oldValue: m[path] };
+    }
+    function commitFieldEdit() {
+        if (!activeFieldEdit) return;
+        const { key, path, oldValue } = activeFieldEdit;
+        activeFieldEdit = null;
+        const m = mounts.find(mm => mm._key === key);
+        if (!m) return;
+        const newValue = m[path];
+        if (newValue === oldValue) return;
+        const tx = createTransaction(`Edit ${path}`);
+        const { forward, inverse } = replaceFieldPatches(key, path, oldValue, newValue);
+        addToTransaction(tx, forward, inverse);
+        history.execute(buildHistoryEntry(tx));
+    }
+
+    // ---------- Custom modal (avoids blocking native confirm()/alert()) ----------
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalMessage = document.getElementById('modalMessage');
+    const modalOkBtn = document.getElementById('modalOkBtn');
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
+
+    function showModal(message, showCancel) {
+        return new Promise((resolve) => {
+            modalMessage.textContent = message;
+            modalCancelBtn.hidden = !showCancel;
+            modalOverlay.hidden = false;
+            modalOkBtn.focus();
+            function cleanup(result) {
+                modalOverlay.hidden = true;
+                modalOkBtn.removeEventListener('click', onOk);
+                modalCancelBtn.removeEventListener('click', onCancel);
+                document.removeEventListener('keydown', onKey);
+                resolve(result);
+            }
+            function onOk() { cleanup(true); }
+            function onCancel() { cleanup(false); }
+            function onKey(e) {
+                if (e.key === 'Escape') cleanup(false);
+                else if (e.key === 'Enter') cleanup(true);
+            }
+            modalOkBtn.addEventListener('click', onOk);
+            modalCancelBtn.addEventListener('click', onCancel);
+            document.addEventListener('keydown', onKey);
+        });
+    }
+    function customConfirm(message) { return showModal(message, true); }
+    function customAlert(message) { return showModal(message, false); }
+
+    window.addEventListener('beforeunload', (e) => {
+        if (isDirty) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    // ---------- Coordinate helpers ----------
+    function screenToSVGPoint(clientX, clientY) {
+        const pt = svg.createSVGPoint();
+        pt.x = clientX;
+        pt.y = clientY;
+        const ctm = svg.getScreenCTM();
+        return pt.matrixTransform(ctm.inverse());
+    }
+
+    // ---------- Zoom ----------
+    function applyZoom() {
+        svg.style.width = (BASE_W * zoomFactor) + 'px';
+        svg.style.height = (BASE_H * zoomFactor) + 'px';
+        zoomResetBtn.textContent = Math.round(zoomFactor * 100) + '%';
+    }
+    zoomInBtn.addEventListener('click', () => { zoomFactor = Math.min(3, zoomFactor * 1.25); applyZoom(); });
+    zoomOutBtn.addEventListener('click', () => { zoomFactor = Math.max(0.3, zoomFactor / 1.25); applyZoom(); });
+    zoomResetBtn.addEventListener('click', () => { zoomFactor = 1; applyZoom(); });
+    mapScroll.addEventListener('wheel', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        zoomFactor = Math.min(3, Math.max(0.3, zoomFactor * (e.deltaY < 0 ? 1.1 : 0.9)));
+        applyZoom();
+    }, { passive: false });
+
+    // ---------- Pin rendering ----------
+    // Mirrors LayoutAPI.createPosterMountsFromData()'s per-poster default and
+    // side-assignment logic so the editor's pins look exactly like the live
+    // site's mount bars/circles instead of a generic dot.
+    const DEFAULT_MOUNT_COLOR = '#404040';
+
+    function toSideData(poster) {
+        return poster ? {
+            title: poster.title,
+            students: poster.students,
+            facultyMentor: poster.facultyMentor,
+            category: poster.category,
+            easelBoard: poster.easelBoard,
+            color: poster.color || DEFAULT_MOUNT_COLOR
+        } : {
+            title: 'Available Space',
+            students: 'No poster assigned',
+            facultyMentor: 'N/A',
+            category: 'Available',
+            easelBoard: 'Unassigned',
+            color: DEFAULT_MOUNT_COLOR
+        };
+    }
+
+    function computeMountVisual(mount) {
+        const orientation = mount.orientation || 'vertical';
+        const posters = mount.id ? (postersByMountId.get(mount.id) || []) : [];
+
+        const lonePoster = posters.find(p => window.layout.isLoneMarkerBoard(p.easelBoard));
+        if (lonePoster && posters.length === 1) {
+            return { kind: 'lone', orientation, poster: toSideData(lonePoster) };
+        }
+
+        const sideAPosters = [];
+        const sideBPosters = [];
+        posters.forEach(poster => {
+            const side = poster.side;
+            if (orientation === 'horizontal') {
+                if (side === 'North') sideAPosters.push(poster);
+                else if (side === 'South') sideBPosters.push(poster);
+                else (sideAPosters.length === 0 ? sideAPosters : sideBPosters).push(poster);
+            } else {
+                if (side === 'West') sideAPosters.push(poster);
+                else if (side === 'East') sideBPosters.push(poster);
+                else (sideAPosters.length === 0 ? sideAPosters : sideBPosters).push(poster);
+            }
+        });
+
+        return {
+            kind: 'mount',
+            orientation,
+            sideA: toSideData(sideAPosters[0] || null),
+            sideB: toSideData(sideBPosters[0] || null)
+        };
+    }
+
+    function buildPinVisual(mount) {
+        const visualConfig = computeMountVisual(mount);
+        const visual = visualConfig.kind === 'lone'
+            ? window.layout.createLoneMarkerElement({
+                id: `mount-visual-${mount._key}`,
+                orientation: visualConfig.orientation,
+                poster: visualConfig.poster
+            })
+            : window.layout.createPosterMountElement({
+                id: `mount-visual-${mount._key}`,
+                orientation: visualConfig.orientation,
+                sideA: visualConfig.sideA,
+                sideB: visualConfig.sideB
+            });
+        visual.classList.add('pin-visual');
+        return visual;
+    }
+
+    // Selection/flash rings are sized to roughly enclose the real mount bar's
+    // circles, which sit further from center on the long axis of the bar.
+    function selectionExtents(orientation) {
+        return orientation === 'horizontal' ? { w: 78, h: 54 } : { w: 54, h: 78 };
+    }
+
+    function createPinElement(mount) {
+        const g = document.createElementNS(SVG_NS, 'g');
+        g.classList.add('mount-pin');
+        g.dataset.key = mount._key;
+        g.setAttribute('transform', `translate(${mount.x}, ${mount.y})`);
+
+        const ext = selectionExtents(mount.orientation);
+        const ring = document.createElementNS(SVG_NS, 'rect');
+        ring.classList.add('selected-ring');
+        ring.setAttribute('x', -ext.w / 2);
+        ring.setAttribute('y', -ext.h / 2);
+        ring.setAttribute('width', ext.w);
+        ring.setAttribute('height', ext.h);
+        ring.setAttribute('rx', 8);
+        ring.setAttribute('fill', 'none');
+        ring.setAttribute('stroke', '#e53935');
+        ring.setAttribute('stroke-width', 2.5);
+        ring.setAttribute('stroke-dasharray', '4 3');
+        g.appendChild(ring);
+
+        const flashRing = document.createElementNS(SVG_NS, 'circle');
+        flashRing.classList.add('flash-ring');
+        flashRing.setAttribute('r', 11);
+        flashRing.setAttribute('fill', 'none');
+        flashRing.setAttribute('stroke', '#e53935');
+        flashRing.setAttribute('stroke-width', 2);
+        g.appendChild(flashRing);
+
+        g.appendChild(buildPinVisual(mount));
+
+        const label = document.createElementNS(SVG_NS, 'text');
+        label.classList.add('pin-label');
+        label.setAttribute('y', mount.orientation === 'horizontal' ? -30 : -46);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '12');
+        label.setAttribute('font-family', 'Arial, sans-serif');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', '#222');
+        label.setAttribute('stroke', '#fff');
+        label.setAttribute('stroke-width', '3');
+        label.setAttribute('paint-order', 'stroke');
+        label.textContent = mount.id || '(new)';
+        g.appendChild(label);
+
+        attachPinInteractions(g, mount);
+        return g;
+    }
+
+    // Rebuilds just the bar/circles for one pin in place (used for live edits
+    // to the Mount ID, which change which posters/colors the pin should show
+    // without going through undo history until the field is committed).
+    function updatePinVisual(key) {
+        const mount = mounts.find(m => m._key === key);
+        const g = editPinsLayer.querySelector(`[data-key="${key}"]`);
+        if (!mount || !g) return;
+        const oldVisual = g.querySelector('.pin-visual');
+        const freshVisual = buildPinVisual(mount);
+        if (oldVisual) g.replaceChild(freshVisual, oldVisual);
+        else g.appendChild(freshVisual);
+    }
+
+    function attachPinInteractions(g, mount) {
+        g.addEventListener('pointerdown', (e) => {
+            const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+            e.stopPropagation();
+            if (additive) {
+                toggleSelection(mount._key);
+                return;
+            }
+            if (!selectedKeys.has(mount._key)) {
+                selectOnly(mount._key);
+            }
+            g.setPointerCapture(e.pointerId);
+            const items = [...selectedKeys].map(key => {
+                const mm = mounts.find(x => x._key === key);
+                return mm ? { key, startMountX: mm.x, startMountY: mm.y } : null;
+            }).filter(Boolean);
+            dragState = {
+                pointerId: e.pointerId,
+                moved: false,
+                startX: e.clientX,
+                startY: e.clientY,
+                items
+            };
+        });
+        g.addEventListener('pointermove', (e) => {
+            if (!dragState || dragState.pointerId !== e.pointerId) return;
+            const dxScreen = e.clientX - dragState.startX;
+            const dyScreen = e.clientY - dragState.startY;
+            if (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3) dragState.moved = true;
+            const p0 = screenToSVGPoint(dragState.startX, dragState.startY);
+            const p1 = screenToSVGPoint(e.clientX, e.clientY);
+            const dx = p1.x - p0.x, dy = p1.y - p0.y;
+            dragState.items.forEach(item => {
+                const mm = mounts.find(mmm => mmm._key === item.key);
+                if (!mm) return;
+                mm.x = Math.round(item.startMountX + dx);
+                mm.y = Math.round(item.startMountY + dy);
+                const el = editPinsLayer.querySelector(`[data-key="${item.key}"]`);
+                if (el) el.setAttribute('transform', `translate(${mm.x}, ${mm.y})`);
+                updateTableRowXY(mm);
+            });
+            refreshEditorFieldsFromSelection();
+            markDirty();
+        });
+        g.addEventListener('pointerup', (e) => {
+            if (!dragState || dragState.pointerId !== e.pointerId) return;
+            const moved = dragState.moved;
+            const items = dragState.items;
+            dragState = null;
+            if (g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId);
+            if (!moved) return;
+            const tx = createTransaction(items.length > 1 ? `Move ${items.length} mounts` : 'Move mount');
+            items.forEach(item => {
+                const mm = mounts.find(x => x._key === item.key);
+                if (!mm) return;
+                if (mm.x !== item.startMountX) {
+                    const p = replaceFieldPatches(item.key, 'x', item.startMountX, mm.x);
+                    addToTransaction(tx, p.forward, p.inverse);
+                }
+                if (mm.y !== item.startMountY) {
+                    const p = replaceFieldPatches(item.key, 'y', item.startMountY, mm.y);
+                    addToTransaction(tx, p.forward, p.inverse);
+                }
+            });
+            history.execute(buildHistoryEntry(tx));
+        });
+    }
+
+    function renderAllPins() {
+        editPinsLayer.innerHTML = '';
+        mounts.forEach(m => editPinsLayer.appendChild(createPinElement(m)));
+        updateSelectionHighlight();
+    }
+
+    function updateSelectionHighlight() {
+        editPinsLayer.querySelectorAll('.mount-pin').forEach(el => {
+            el.classList.toggle('selected', selectedKeys.has(Number(el.dataset.key)));
+        });
+    }
+
+    // ---------- Background click / marquee select (add mount) ----------
+    let suppressNextClick = false;
+
+    svg.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.mount-pin')) return;
+        svg.setPointerCapture(e.pointerId);
+        const pt = screenToSVGPoint(e.clientX, e.clientY);
+        marqueeState = {
+            pointerId: e.pointerId,
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            startSvgX: pt.x,
+            startSvgY: pt.y,
+            moved: false,
+            additive: e.shiftKey || e.ctrlKey || e.metaKey,
+            rect: null
+        };
+    });
+    svg.addEventListener('pointermove', (e) => {
+        if (!marqueeState || marqueeState.pointerId !== e.pointerId) return;
+        const dxScreen = e.clientX - marqueeState.startClientX;
+        const dyScreen = e.clientY - marqueeState.startClientY;
+        if (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3) marqueeState.moved = true;
+        if (!marqueeState.moved) return;
+        const pt = screenToSVGPoint(e.clientX, e.clientY);
+        const x = Math.min(pt.x, marqueeState.startSvgX);
+        const y = Math.min(pt.y, marqueeState.startSvgY);
+        const w = Math.abs(pt.x - marqueeState.startSvgX);
+        const h = Math.abs(pt.y - marqueeState.startSvgY);
+        marqueeState.rect = { x, y, w, h };
+        marqueeRectEl.setAttribute('x', x);
+        marqueeRectEl.setAttribute('y', y);
+        marqueeRectEl.setAttribute('width', w);
+        marqueeRectEl.setAttribute('height', h);
+        marqueeRectEl.hidden = false;
+    });
+    svg.addEventListener('pointerup', (e) => {
+        if (!marqueeState || marqueeState.pointerId !== e.pointerId) return;
+        const { moved, rect, additive } = marqueeState;
+        if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+        marqueeRectEl.hidden = true;
+        marqueeState = null;
+        if (moved && rect) {
+            suppressNextClick = true;
+            const within = mounts.filter(m => m.x >= rect.x && m.x <= rect.x + rect.w && m.y >= rect.y && m.y <= rect.y + rect.h).map(m => m._key);
+            if (additive) {
+                within.forEach(k => selectedKeys.add(k));
+            } else {
+                selectedKeys = new Set(within);
+            }
+            onSelectionChanged();
+        }
+    });
+
+    svg.addEventListener('click', (e) => {
+        if (suppressNextClick) {
+            suppressNextClick = false;
+            return;
+        }
+        if (e.target.closest('.mount-pin')) return;
+        if (selectedKeys.size > 1) {
+            clearSelection();
+            return;
+        }
+        if (!addModeToggle.checked) {
+            clearSelection();
+            return;
+        }
+        const pt = screenToSVGPoint(e.clientX, e.clientY);
+        addMountAt(pt.x, pt.y);
+    });
+
+    function addMountAt(x, y) {
+        const mount = {
+            _key: nextKey++,
+            id: pendingMountId || '',
+            x: Math.round(x),
+            y: Math.round(y),
+            orientation: 'vertical'
+        };
+        pendingMountId = null;
+        const tx = createTransaction('Add mount');
+        const { forward, inverse } = addMountPatchesFor(mount);
+        addToTransaction(tx, forward, inverse);
+        history.execute(buildHistoryEntry(tx));
+        selectOnly(mount._key);
+    }
+
+    // ---------- Selection / editor ----------
+    function getSelectedMounts() {
+        return mounts.filter(m => selectedKeys.has(m._key));
+    }
+
+    function getSelected() {
+        if (selectedKeys.size !== 1) return null;
+        const key = selectedKeys.values().next().value;
+        return mounts.find(m => m._key === key) || null;
+    }
+
+    function selectOnly(key) {
+        selectedKeys = new Set([key]);
+        onSelectionChanged();
+    }
+
+    function toggleSelection(key) {
+        if (selectedKeys.has(key)) selectedKeys.delete(key);
+        else selectedKeys.add(key);
+        onSelectionChanged();
+    }
+
+    function clearSelection() {
+        selectedKeys = new Set();
+        onSelectionChanged();
+    }
+
+    function onSelectionChanged() {
+        updateSelectionHighlight();
+        renderEditorPanel();
+        renderTable();
+    }
+
+    function refreshEditorFieldsFromSelection() {
+        if (selectedKeys.size === 1) {
+            const m = getSelected();
+            if (m) { fieldX.value = m.x; fieldY.value = m.y; }
+        }
+    }
+
+    function renderEditorPanel() {
+        const sel = getSelectedMounts();
+        if (sel.length === 0) {
+            editorEmptyHint.hidden = false;
+            editorForm.hidden = true;
+            multiEditorForm.hidden = true;
+        } else if (sel.length === 1) {
+            const m = sel[0];
+            editorEmptyHint.hidden = true;
+            editorForm.hidden = false;
+            multiEditorForm.hidden = true;
+            fieldMountId.value = m.id;
+            fieldX.value = m.x;
+            fieldY.value = m.y;
+            fieldOrientation.value = m.orientation;
+            renderXref(m);
+        } else {
+            editorEmptyHint.hidden = true;
+            editorForm.hidden = true;
+            multiEditorForm.hidden = false;
+            multiSelectSummary.textContent = `${sel.length} mounts selected: ${sel.map(m => m.id || '(new)').join(', ')}`;
+            multiEditorForm.querySelectorAll('[data-distribute]').forEach(btn => { btn.disabled = sel.length < 3; });
+            bulkOrientation.value = '';
+            deleteSelectedBtn.textContent = `Delete ${sel.length} mounts`;
+        }
+    }
+
+    function alignSelected(mode) {
+        const sel = getSelectedMounts();
+        if (sel.length < 2) return;
+        const path = (mode === 'left' || mode === 'right' || mode === 'centerX') ? 'x' : 'y';
+        let value;
+        switch (mode) {
+            case 'left': value = Math.min(...sel.map(m => m.x)); break;
+            case 'right': value = Math.max(...sel.map(m => m.x)); break;
+            case 'top': value = Math.min(...sel.map(m => m.y)); break;
+            case 'bottom': value = Math.max(...sel.map(m => m.y)); break;
+            case 'centerX': value = Math.round(sel.reduce((s, m) => s + m.x, 0) / sel.length); break;
+            case 'centerY': value = Math.round(sel.reduce((s, m) => s + m.y, 0) / sel.length); break;
+            default: return;
+        }
+        const tx = createTransaction(`Align ${mode}`);
+        sel.forEach(m => {
+            const oldValue = m[path];
+            if (oldValue === value) return;
+            const { forward, inverse } = replaceFieldPatches(m._key, path, oldValue, value);
+            addToTransaction(tx, forward, inverse);
+        });
+        history.execute(buildHistoryEntry(tx));
+    }
+
+    function distributeSelected(axis) {
+        const sel = getSelectedMounts();
+        if (sel.length < 3) return;
+        const sorted = [...sel].sort((a, b) => a[axis] - b[axis]);
+        const min = sorted[0][axis];
+        const max = sorted[sorted.length - 1][axis];
+        const step = (max - min) / (sorted.length - 1);
+        const tx = createTransaction(`Distribute ${axis === 'x' ? 'horizontally' : 'vertically'}`);
+        sorted.forEach((m, i) => {
+            const newValue = Math.round(min + step * i);
+            if (newValue === m[axis]) return;
+            const { forward, inverse } = replaceFieldPatches(m._key, axis, m[axis], newValue);
+            addToTransaction(tx, forward, inverse);
+        });
+        history.execute(buildHistoryEntry(tx));
+    }
+
+    multiEditorForm.querySelectorAll('[data-align]').forEach(btn => {
+        btn.addEventListener('click', () => alignSelected(btn.dataset.align));
+    });
+    multiEditorForm.querySelectorAll('[data-distribute]').forEach(btn => {
+        btn.addEventListener('click', () => distributeSelected(btn.dataset.distribute));
+    });
+    bulkOrientation.addEventListener('change', () => {
+        const v = bulkOrientation.value;
+        bulkOrientation.value = '';
+        if (!v) return;
+        const sel = getSelectedMounts();
+        const tx = createTransaction('Set orientation');
+        sel.forEach(m => {
+            if (m.orientation === v) return;
+            const { forward, inverse } = replaceFieldPatches(m._key, 'orientation', m.orientation, v);
+            addToTransaction(tx, forward, inverse);
+        });
+        history.execute(buildHistoryEntry(tx));
+    });
+    deleteSelectedBtn.addEventListener('click', async () => {
+        const sel = getSelectedMounts();
+        if (sel.length === 0) return;
+        if (!(await customConfirm(`Delete ${sel.length} mounts?`))) return;
+        const tx = createTransaction(`Delete ${sel.length} mounts`);
+        sel.forEach(m => {
+            const { forward, inverse } = removeMountPatchesFor(m);
+            addToTransaction(tx, forward, inverse);
+        });
+        history.execute(buildHistoryEntry(tx));
+    });
+
+    // ---------- Keyboard: undo/redo + arrow key nudge ----------
+    document.addEventListener('keydown', (e) => {
+        if (!modalOverlay.hidden) return;
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        const mod = isMac ? e.metaKey : e.ctrlKey;
+        if (mod && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            if (e.shiftKey) history.redo(); else history.undo();
+            return;
+        }
+        if (!isMac && e.ctrlKey && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            history.redo();
+            return;
+        }
+
+        const deltas = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        const delta = deltas[e.key];
+        if (!delta || selectedKeys.size === 0) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const sel = getSelectedMounts();
+        const tx = createTransaction('Nudge');
+        sel.forEach(m => {
+            const oldX = m.x, oldY = m.y;
+            const newX = oldX + delta[0] * step;
+            const newY = oldY + delta[1] * step;
+            if (newX !== oldX) {
+                const p = replaceFieldPatches(m._key, 'x', oldX, newX);
+                addToTransaction(tx, p.forward, p.inverse);
+            }
+            if (newY !== oldY) {
+                const p = replaceFieldPatches(m._key, 'y', oldY, newY);
+                addToTransaction(tx, p.forward, p.inverse);
+            }
+        });
+        history.execute(buildHistoryEntry(tx));
+    });
+
+    fieldMountId.addEventListener('focus', () => { const m = getSelected(); if (m) beginFieldEdit(m._key, 'id'); });
+    fieldMountId.addEventListener('blur', commitFieldEdit);
+    fieldMountId.addEventListener('input', () => {
+        const m = getSelected();
+        if (!m) return;
+        m.id = fieldMountId.value.trim();
+        const pin = editPinsLayer.querySelector(`[data-key="${m._key}"] .pin-label`);
+        if (pin) pin.textContent = m.id || '(new)';
+        updatePinVisual(m._key);
+        renderXref(m);
+        renderUnplacedList();
+        markDirty();
+    });
+    fieldX.addEventListener('focus', () => { const m = getSelected(); if (m) beginFieldEdit(m._key, 'x'); });
+    fieldX.addEventListener('blur', commitFieldEdit);
+    fieldX.addEventListener('input', () => {
+        const m = getSelected();
+        if (!m) return;
+        m.x = Number(fieldX.value) || 0;
+        const g = editPinsLayer.querySelector(`[data-key="${m._key}"]`);
+        if (g) g.setAttribute('transform', `translate(${m.x}, ${m.y})`);
+        updateTableRowXY(m);
+        markDirty();
+    });
+    fieldY.addEventListener('focus', () => { const m = getSelected(); if (m) beginFieldEdit(m._key, 'y'); });
+    fieldY.addEventListener('blur', commitFieldEdit);
+    fieldY.addEventListener('input', () => {
+        const m = getSelected();
+        if (!m) return;
+        m.y = Number(fieldY.value) || 0;
+        const g = editPinsLayer.querySelector(`[data-key="${m._key}"]`);
+        if (g) g.setAttribute('transform', `translate(${m.x}, ${m.y})`);
+        updateTableRowXY(m);
+        markDirty();
+    });
+    fieldOrientation.addEventListener('change', () => {
+        const m = getSelected();
+        if (!m) return;
+        const oldValue = m.orientation;
+        const newValue = fieldOrientation.value;
+        if (newValue === oldValue) return;
+        const tx = createTransaction('Set orientation');
+        const { forward, inverse } = replaceFieldPatches(m._key, 'orientation', oldValue, newValue);
+        addToTransaction(tx, forward, inverse);
+        history.execute(buildHistoryEntry(tx));
+    });
+    deleteMountBtn.addEventListener('click', () => {
+        const m = getSelected();
+        if (m) deleteMount(m._key);
+    });
+
+    async function deleteMount(key) {
+        const m = mounts.find(mm => mm._key === key);
+        if (!m) return;
+        if (!(await customConfirm(`Delete mount "${m.id || '(unnamed)'}"?`))) return;
+        const tx = createTransaction('Delete mount');
+        const { forward, inverse } = removeMountPatchesFor(m);
+        addToTransaction(tx, forward, inverse);
+        history.execute(buildHistoryEntry(tx));
+    }
+
+    function expectedSidesFor(orientation) {
+        return orientation === 'horizontal' ? ['North', 'South'] : ['West', 'East'];
+    }
+
+    function renderXref(mount) {
+        const parts = [];
+        const duplicateCount = mount.id ? mounts.filter(m => m.id === mount.id).length : 0;
+        if (duplicateCount > 1) {
+            parts.push(`<div class="warn">⚠ ${duplicateCount} mounts share the ID "${escapeHtml(mount.id)}". Mount IDs should be unique.</div>`);
+        }
+        if (!mount.id) {
+            parts.push(`<div class="warn">Enter a Mount ID to see matching posters from poster-data.tsv.</div>`);
+        } else {
+            const posters = postersByMountId.get(mount.id) || [];
+            if (posters.length === 0) {
+                parts.push(`<div class="warn">No posters reference Mount ID "${escapeHtml(mount.id)}" in poster-data.tsv. This mount may be unused, or the ID doesn't match yet.</div>`);
+            } else {
+                if (posters.length > 2) {
+                    parts.push(`<div class="warn">⚠ ${posters.length} posters reference this Mount ID, but a mount holds at most 2 (one per side). Check poster-data.tsv for a typo'd Mount ID.</div>`);
+                } else if (posters.length === 2 && posters[0].side && posters[0].side === posters[1].side) {
+                    parts.push(`<div class="warn">⚠ Both posters are assigned to the same side ("${escapeHtml(posters[0].side)}"). Each mount should have one poster per side.</div>`);
+                }
+                const expected = expectedSidesFor(mount.orientation);
+                posters.forEach(p => {
+                    const sideOk = !p.side || expected.includes(p.side);
+                    parts.push(`
+                        <div class="poster-card">
+                            <div class="title">${escapeHtml(p.title || '(untitled)')}</div>
+                            <div>Side: <strong>${escapeHtml(p.side || '—')}</strong>${sideOk ? '' : ` ⚠ expected ${expected.join('/')} for ${mount.orientation}`}</div>
+                            <div>${escapeHtml(p.category || '')}${p.easelBoard ? ' · ' + escapeHtml(p.easelBoard) : ''}</div>
+                            <div>${escapeHtml(p.students || '')}</div>
+                        </div>
+                    `);
+                });
+            }
+        }
+        xrefBox.innerHTML = parts.join('');
+    }
+
+    // ---------- Unplaced mount IDs ----------
+    function computeUnplacedIds() {
+        const placed = new Set(mounts.map(m => m.id).filter(Boolean));
+        const referenced = new Set(postersByMountId.keys());
+        return [...referenced].filter(id => !placed.has(id)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+
+    function renderUnplacedList() {
+        const ids = computeUnplacedIds();
+        unplacedCount.textContent = `(${ids.length})`;
+        if (ids.length === 0) {
+            unplacedList.innerHTML = '<p class="hint" style="margin:0;">All referenced mount IDs are placed.</p>';
+        } else {
+            unplacedList.innerHTML = ids.map(id =>
+                `<button type="button" class="chip${id === pendingMountId ? ' pending' : ''}" data-id="${escapeHtml(id)}">${escapeHtml(id)}</button>`
+            ).join('');
+        }
+        unplacedIdsList.innerHTML = ids.map(id => `<option value="${escapeHtml(id)}">`).join('');
+    }
+
+    unplacedList.addEventListener('click', (e) => {
+        const chip = e.target.closest('.chip');
+        if (!chip) return;
+        pendingMountId = (pendingMountId === chip.dataset.id) ? null : chip.dataset.id;
+        renderUnplacedList();
+    });
+
+    // ---------- Table ----------
+    function updateTableRowXY(mount) {
+        const row = mountsTableBody.querySelector(`tr[data-key="${mount._key}"]`);
+        if (!row) return;
+        const xInput = row.querySelector('input[data-field="x"]');
+        const yInput = row.querySelector('input[data-field="y"]');
+        if (xInput && document.activeElement !== xInput) xInput.value = mount.x;
+        if (yInput && document.activeElement !== yInput) yInput.value = mount.y;
+    }
+
+    function renderTable() {
+        mountCountEl.textContent = mounts.length;
+        const idCounts = new Map();
+        mounts.forEach(m => { if (m.id) idCounts.set(m.id, (idCounts.get(m.id) || 0) + 1); });
+
+        mountsTableBody.innerHTML = mounts.map(m => {
+            const posterCount = m.id ? (postersByMountId.get(m.id) || []).length : 0;
+            const isDup = m.id && idCounts.get(m.id) > 1;
+            const badge = posterCount > 0
+                ? `<span class="badge">${posterCount} poster${posterCount > 1 ? 's' : ''}</span>`
+                : `<span class="badge none">unused</span>`;
+            return `
+                <tr data-key="${m._key}" class="${selectedKeys.has(m._key) ? 'selected-row' : ''}">
+                    <td><input class="id-field${isDup || !m.id ? ' bad' : ''}" data-field="id" value="${escapeHtml(m.id)}"></td>
+                    <td><input type="number" data-field="x" value="${m.x}"></td>
+                    <td><input type="number" data-field="y" value="${m.y}"></td>
+                    <td>
+                        <select data-field="orientation">
+                            <option value="vertical" ${m.orientation === 'vertical' ? 'selected' : ''}>vertical</option>
+                            <option value="horizontal" ${m.orientation === 'horizontal' ? 'selected' : ''}>horizontal</option>
+                        </select>
+                    </td>
+                    <td>${badge}</td>
+                    <td class="row-actions">
+                        <button type="button" data-action="locate">Locate</button>
+                        <button type="button" data-action="delete">✕</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    mountsTableBody.addEventListener('focusin', (e) => {
+        const field = e.target.dataset.field;
+        if (field !== 'id' && field !== 'x' && field !== 'y') return;
+        const row = e.target.closest('tr');
+        if (!row) return;
+        beginFieldEdit(Number(row.dataset.key), field);
+    });
+    mountsTableBody.addEventListener('focusout', (e) => {
+        const field = e.target.dataset.field;
+        if (field !== 'id' && field !== 'x' && field !== 'y') return;
+        commitFieldEdit();
+    });
+    mountsTableBody.addEventListener('input', (e) => {
+        const row = e.target.closest('tr');
+        if (!row) return;
+        const m = mounts.find(mm => mm._key === Number(row.dataset.key));
+        if (!m) return;
+        const field = e.target.dataset.field;
+        if (field === 'id') {
+            m.id = e.target.value.trim();
+            const label = editPinsLayer.querySelector(`[data-key="${m._key}"] .pin-label`);
+            if (label) label.textContent = m.id || '(new)';
+            updatePinVisual(m._key);
+            renderUnplacedList();
+            if (selectedKeys.has(m._key) && selectedKeys.size === 1) { fieldMountId.value = m.id; renderXref(m); }
+        } else if (field === 'x' || field === 'y') {
+            m[field] = Number(e.target.value) || 0;
+            const g = editPinsLayer.querySelector(`[data-key="${m._key}"]`);
+            if (g) g.setAttribute('transform', `translate(${m.x}, ${m.y})`);
+            if (selectedKeys.has(m._key) && selectedKeys.size === 1) { fieldX.value = m.x; fieldY.value = m.y; }
+        }
+        markDirty();
+    });
+    mountsTableBody.addEventListener('change', (e) => {
+        const row = e.target.closest('tr');
+        if (!row) return;
+        const m = mounts.find(mm => mm._key === Number(row.dataset.key));
+        if (!m) return;
+        if (e.target.dataset.field === 'orientation') {
+            const oldValue = m.orientation;
+            const newValue = e.target.value;
+            if (newValue === oldValue) return;
+            const tx = createTransaction('Set orientation');
+            const { forward, inverse } = replaceFieldPatches(m._key, 'orientation', oldValue, newValue);
+            addToTransaction(tx, forward, inverse);
+            history.execute(buildHistoryEntry(tx));
+        }
+    });
+    mountsTableBody.addEventListener('click', (e) => {
+        const row = e.target.closest('tr');
+        if (!row) return;
+        const key = Number(row.dataset.key);
+        const m = mounts.find(mm => mm._key === key);
+        if (!m) return;
+        const action = e.target.dataset.action;
+        if (action === 'delete') {
+            deleteMount(key);
+        } else if (action === 'locate') {
+            selectOnly(key);
+            const el = editPinsLayer.querySelector(`[data-key="${key}"]`);
+            if (el) {
+                el.classList.add('flash');
+                setTimeout(() => el.classList.remove('flash'), 1900);
+            }
+            const targetLeft = m.x * zoomFactor - mapScroll.clientWidth / 2;
+            const targetTop = m.y * zoomFactor - mapScroll.clientHeight / 2;
+            mapScroll.scrollTo({ left: Math.max(0, targetLeft), top: Math.max(0, targetTop), behavior: 'smooth' });
+        } else if (!['INPUT', 'SELECT', 'BUTTON'].includes(e.target.tagName)) {
+            if (e.shiftKey || e.ctrlKey || e.metaKey) toggleSelection(key);
+            else selectOnly(key);
+        }
+    });
+
+    sortBtn.addEventListener('click', () => {
+        const oldState = mounts;
+        const newState = [...mounts].sort((a, b) => (a.id || '').localeCompare(b.id || '', undefined, { numeric: true }));
+        const tx = createTransaction('Sort by ID');
+        const { forward, inverse } = replaceAllPatches(oldState, newState);
+        addToTransaction(tx, forward, inverse);
+        history.execute(buildHistoryEntry(tx));
+    });
+
+    // ---------- Import / Export ----------
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', async () => {
+        const file = importFile.files[0];
+        if (!file) return;
+        if (isDirty && !(await customConfirm('This will replace all mounts currently in the editor with the contents of the imported file. Continue?'))) {
+            importFile.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const parsed = window.layout.parsePosterDataTSV(reader.result);
+                applyPosterRows(parsed);
+                selectedKeys = new Set();
+                history.replaceState(mounts);
+            } catch (err) {
+                customAlert('Could not parse that file as a poster-data.tsv: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+        importFile.value = '';
+    });
+
+    exportBtn.addEventListener('click', async () => {
+        const missingIds = mounts.filter(m => !m.id).length;
+        const idCounts = new Map();
+        mounts.forEach(m => { if (m.id) idCounts.set(m.id, (idCounts.get(m.id) || 0) + 1); });
+        const dupeIds = [...idCounts.entries()].filter(([, c]) => c > 1).map(([id]) => id);
+        if (missingIds > 0 || dupeIds.length > 0) {
+            const msg = [
+                missingIds > 0 ? `${missingIds} mount(s) have no Mount ID.` : null,
+                dupeIds.length > 0 ? `Duplicate Mount IDs: ${dupeIds.join(', ')}.` : null,
+                'Export anyway?'
+            ].filter(Boolean).join('\n');
+            if (!(await customConfirm(msg))) return;
+        }
+        // Re-emit every original poster-data.tsv row, substituting only the
+        // X/Y/Orientation for the current (possibly edited) mount position.
+        // A row whose Mount ID has no matching mount (deleted, or never placed)
+        // is exported with blank coordinates - i.e. unplaced.
+        const mountById = new Map(mounts.map(m => [m.id, m]));
+        const header = ['Poster Category', 'Easel Board', 'Poster Title', 'Students', 'Faculty', 'Mount ID', 'Side', 'X Coordinate', 'Y Coordinate', 'Orientation', 'Color'];
+        const rows = posterRows.map(p => {
+            const mount = p.mountId ? mountById.get(p.mountId) : null;
+            return [
+                p.category, p.easelBoard, p.title, p.students, p.facultyMentor, p.mountId, p.side,
+                mount ? Math.round(mount.x) : '',
+                mount ? Math.round(mount.y) : '',
+                mount ? (mount.orientation || 'vertical') : '',
+                p.color
+            ].map(tsvField).join('\t');
+        });
+        const text = [header.join('\t'), ...rows].join('\n');
+        const blob = new Blob([text], { type: 'text/tab-separated-values' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'poster-data.tsv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        isDirty = false;
+    });
+
+    // ---------- Boot ----------
+    async function loadBuildings(layout) {
+        // Single combined site map (replaces the old separate Parsons/Sprague/
+        // Strauss Plaza/Jacobs-Keck SVGs), same asset and placement as index.html.
+        // Building name labels are baked into this SVG, so no manual <text> is added.
+        await layout.addSVG({
+            id: 'strauss-plaza-map',
+            svgFile: '../assets/svg/strauss-plaza.svg',
+            position: { x: 0, y: 0 },
+            interactive: false
+        });
+    }
+
+    async function boot() {
+        const layout = new LayoutAPI({ svg, posterAreasGroup, markersGroup });
+        window.layout = layout;
+
+        editPinsLayer = document.createElementNS(SVG_NS, 'g');
+        editPinsLayer.id = 'edit-pins-layer';
+
+        const problems = [];
+
+        try {
+            await loadBuildings(layout);
+        } catch (err) {
+            console.error(err);
+            problems.push('Could not load the building SVGs (assets/svg/*.svg).');
+        }
+
+        svg.appendChild(editPinsLayer);
+
+        marqueeRectEl = document.createElementNS(SVG_NS, 'rect');
+        marqueeRectEl.classList.add('marquee-rect');
+        marqueeRectEl.hidden = true;
+        svg.appendChild(marqueeRectEl);
+
+        try {
+            const posterRes = await fetch('../data/poster-data.tsv');
+            if (!posterRes.ok) throw new Error('poster-data.tsv: HTTP ' + posterRes.status);
+            const posterText = await posterRes.text();
+            applyPosterRows(layout.parsePosterDataTSV(posterText));
+        } catch (err) {
+            console.error(err);
+            problems.push('Could not load data/poster-data.tsv (' + err.message + ').');
+        }
+
+        if (problems.length > 0) {
+            showBanner(
+                '<strong>Heads up:</strong> ' + problems.join(' ') +
+                ' This usually means the page was opened directly as a <code>file://</code> URL, which browsers block from fetching local files. ' +
+                'Serve the project over HTTP instead, e.g. from the project root run <code>python3 -m http.server 8000</code>, then open ' +
+                '<code>http://localhost:8000/tools/mount-editor.html</code>.'
+            );
+        }
+
+        history = createHistoryEngine(mounts);
+        history.subscribe(onHistoryChange);
+        onHistoryChange(mounts);
+        applyZoom();
+    }
+
+    boot();
+})();
+</script>
+</body>
+</html>

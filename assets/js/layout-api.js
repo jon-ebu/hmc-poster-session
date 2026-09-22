@@ -13,84 +13,6 @@ class LayoutAPI {
         this.map.svg.appendChild(this.posterLayer);
     }
 
-    /**
-     * Function to get the color corresponding to the easel easelBoardId value
-     * @param {*} value The value to extract the easelBoardId from, e.g. 'B-01' or 'BC-02'
-     * @returns color The color corresponding to the easelBoardId value
-     */
-    getColorByEaselBoardId(value) {
-        if (!value) return "#404040"; // Default gray for missing values
-        
-        let easelBoardId = value.split("-")[0]; // Extract the easelBoardId
-        let color;
-        switch (easelBoardId) {
-            case "B":
-                color = "#008000"; // green (B-1 through B-7)
-                break;
-            case "BCS":
-                color = "#FFA500"; // orange (BCS-1, BCS-2, BCS-3)
-                break;
-            case "C":
-                color = "#FF0000"; // red (C-1 through C-17)
-                break;
-            case "CEP":
-                color = "#FFA500"; // orange (CEP1 & CEP2)
-                break;
-            case "CHC":
-                color = "#FFA500"; // orange (CHC1, CHC2, CHC3)
-                break;
-            case "CP":
-                color = "#FFA500"; // orange (CP1)
-                break;
-            case "CS":
-                color = "#87CEEB"; // light blue (CS-1 through CS-22)
-                break;
-            case "CSE":
-                color = "#FFA500"; // orange (CSE-1, CSE-2)
-                break;
-            case "CSEM":
-                color = "#FFA500"; // orange (CSEM-1)
-                break;
-            case "CSEP":
-                color = "#FFA500"; // orange (CSEP-1, CSEP-2)
-                break;
-            case "CSHC":
-                color = "#FFA500"; // orange (CSHC-1, CSHC-2)
-                break;
-            case "CSM":
-                color = "#FFA500"; // orange (CSM-1)
-                break;
-            case "E":
-                color = "#000000"; // black (E-1 through E-26)
-                break;
-            case "EP":
-                color = "#FFA500"; // orange (EP-1)
-                break;
-            case "HC":
-                color = "#B59410"; // rich gold (HC-1)
-                break;
-            case "BHC":
-                color = "#FFA500"; // orange (matches BCS series)
-                break;
-            case "HSA":
-                color = "#20B2AA"; // light teal (HSA-1)
-                break;
-            case "HSAM":
-                color = "#FFA500"; // orange (HSAM-1)
-                break;
-            case "M":
-                color = "#FF8C00"; // dark orange (M-1 through M-5)
-                break;
-            case "P":
-                color = "#800080"; // purple (P-1 through P-13)
-                break;
-            default:
-                color = "#404040"; // gray for unrecognized easelBoardId
-        }
-
-        return color;
-    }
-
     isLoneMarkerBoard(easelBoard) {
         return easelBoard ? this.loneMarkerBoards.has(easelBoard) : false;
     }
@@ -118,24 +40,23 @@ class LayoutAPI {
     }
 
     /**
-     * Get appropriate text color based on background color for better contrast
+     * Get appropriate text color based on background color for better contrast.
+     * Colors now come from the poster data's own Color column (arbitrary hex
+     * values, not a fixed palette), so contrast is computed from luminance
+     * rather than matched against a hardcoded list of known colors.
      * @param {string} backgroundColor - The background color hex value
      * @returns {string} Text color (white or black)
      */
     getTextColorForBackground(backgroundColor) {
-        // Light/bright colors that need black text for better contrast
-        const lightColors = ['#87CEEB', '#20B2AA', '#FFA500', '#FFD700']; // Colors requiring dark text for contrast
-
-        if (lightColors.includes(backgroundColor)) {
-            return 'black';
-        }
-
-        if (backgroundColor === '#B59410') {
+        const hex = (backgroundColor || '').replace('#', '');
+        if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
             return 'white';
         }
-
-        // Default to white for all other colors
-        return 'white';
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness > 125 ? 'black' : 'white';
     }
 
     /**
@@ -147,7 +68,9 @@ class LayoutAPI {
      * @param {number} config.position.x - X coordinate
      * @param {number} config.position.y - Y coordinate
      * @param {Object} [config.transform] - Transform options
-     * @param {number} [config.transform.scale] - Scale factor (default: 1)
+     * @param {number} [config.transform.scale] - Uniform scale factor (default: 1)
+     * @param {number} [config.transform.scaleX] - Horizontal scale factor (default: 1)
+     * @param {number} [config.transform.scaleY] - Vertical scale factor (default: 1); -1 flips vertically
      * @param {number} [config.transform.rotate] - Rotation in degrees
      * @param {string} [config.transform.anchor] - Transform origin (center, top-left, etc.)
      * @param {Object} [config.style] - Style overrides
@@ -282,8 +205,11 @@ class LayoutAPI {
         const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
         const svgElement = svgDoc.documentElement;
 
-        // Extract path data from the SVG
-        const paths = svgElement.querySelectorAll('path, rect, circle, polygon');
+        // Extract path data from the SVG, skipping anything defined inside
+        // <defs>/<clipPath>/<mask>/<symbol> (e.g. clipPath rects) - those are
+        // definitions, not visible content, and must not be drawn directly
+        const paths = Array.from(svgElement.querySelectorAll('path, rect, circle, polygon'))
+            .filter(el => !el.closest('defs, clipPath, mask, symbol'));
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('id', config.id);
 
@@ -412,7 +338,10 @@ class LayoutAPI {
             if (config.transform.scale && config.transform.scale !== 1) {
                 transforms.push(`scale(${config.transform.scale})`);
             }
-            if (config.transform.scaleY && config.transform.scaleY === -1) {
+            if (config.transform.scaleX && config.transform.scaleX !== 1) {
+                const sy = config.transform.scaleY === -1 ? -1 : (config.transform.scaleY || 1);
+                transforms.push(`scale(${config.transform.scaleX}, ${sy})`);
+            } else if (config.transform.scaleY && config.transform.scaleY === -1) {
                 // For vertical flip, use scale(1, -1) which flips around the center
                 transforms.push(`scale(1, -1)`);
             } else if (config.transform.scaleY && config.transform.scaleY !== 1) {
@@ -606,7 +535,7 @@ class LayoutAPI {
         marker.setAttribute('cx', 0);
         marker.setAttribute('cy', 0);
         marker.setAttribute('r', 14);
-        marker.setAttribute('fill', this.getColorByEaselBoardId(config.poster.easelBoard));
+        marker.setAttribute('fill', config.poster.color || '#404040');
         marker.setAttribute('stroke', 'white');
         marker.setAttribute('stroke-width', 2);
         marker.style.cursor = 'pointer';
@@ -635,7 +564,7 @@ class LayoutAPI {
         
         markerText.setAttribute('font-weight', 'bold');
         // Use dynamic text color based on background color for better contrast
-        const backgroundColor = this.getColorByEaselBoardId(config.poster.easelBoard);
+        const backgroundColor = config.poster.color || '#404040';
         const textColor = this.getTextColorForBackground(backgroundColor);
         markerText.setAttribute('fill', textColor);
         markerText.setAttribute('pointer-events', 'none'); // Make text non-interactive to prevent hover conflicts
@@ -734,7 +663,7 @@ class LayoutAPI {
                 if (window.posterMap) {
                     const easel = config.poster.easelBoard || 'N/A';
                     const title = config.poster.title || 'Poster Information';
-                    const bgColor = window.layout?.getColorByEaselBoardId?.(easel) || '#404040';
+                    const bgColor = config.poster.color || '#404040';
                     const textColor = window.layout?.getTextColorForBackground?.(bgColor) || 'white';
                     const fontSize = easel.length <= 2 ? 13 : easel.length <= 4 ? 11 : easel.length <= 6 ? 10 : 9;
                     window.posterMap.infoTitle.innerHTML = `
@@ -1032,7 +961,7 @@ class LayoutAPI {
         sideAIndicator.setAttribute('cx', offsetA.x);
         sideAIndicator.setAttribute('cy', offsetA.y);
         sideAIndicator.setAttribute('r', 14); // Same size for all mounts
-        sideAIndicator.setAttribute('fill', this.getColorByEaselBoardId(config.sideA.easelBoard));
+        sideAIndicator.setAttribute('fill', config.sideA.color || '#404040');
         sideAIndicator.setAttribute('stroke', 'white');
         sideAIndicator.setAttribute('stroke-width', 2);
         sideAIndicator.style.cursor = 'pointer';
@@ -1051,6 +980,7 @@ class LayoutAPI {
         sideAText.setAttribute('text-anchor', 'middle');
         sideAText.setAttribute('dominant-baseline', 'central');
         sideAText.setAttribute('font-family', 'Arial, sans-serif');
+        sideAText.setAttribute('data-side', 'A');
         
         // Dynamic font sizing based on text length
         const sideAEaselBoard = config.sideA.easelBoard || '';
@@ -1062,7 +992,7 @@ class LayoutAPI {
         
         sideAText.setAttribute('font-weight', 'bold');
         // Use dynamic text color based on background color for better contrast
-        const sideABackgroundColor = this.getColorByEaselBoardId(config.sideA.easelBoard);
+        const sideABackgroundColor = config.sideA.color || '#404040';
         const sideATextColor = this.getTextColorForBackground(sideABackgroundColor);
         sideAText.setAttribute('fill', sideATextColor);
         sideAText.setAttribute('pointer-events', 'none'); // Make text non-interactive to prevent hover conflicts
@@ -1084,7 +1014,7 @@ class LayoutAPI {
         sideBIndicator.setAttribute('cx', offsetB.x);
         sideBIndicator.setAttribute('cy', offsetB.y);
         sideBIndicator.setAttribute('r', 14); // Same size for all mounts
-        sideBIndicator.setAttribute('fill', this.getColorByEaselBoardId(config.sideB.easelBoard));
+        sideBIndicator.setAttribute('fill', config.sideB.color || '#404040');
         sideBIndicator.setAttribute('stroke', 'white');
         sideBIndicator.setAttribute('stroke-width', 2);
         sideBIndicator.style.cursor = 'pointer';
@@ -1103,6 +1033,7 @@ class LayoutAPI {
         sideBText.setAttribute('text-anchor', 'middle');
         sideBText.setAttribute('dominant-baseline', 'central');
         sideBText.setAttribute('font-family', 'Arial, sans-serif');
+        sideBText.setAttribute('data-side', 'B');
         
         // Dynamic font sizing based on text length
         const sideBEaselBoard = config.sideB.easelBoard || '';
@@ -1114,7 +1045,7 @@ class LayoutAPI {
         
         sideBText.setAttribute('font-weight', 'bold');
         // Use dynamic text color based on background color for better contrast
-        const sideBBackgroundColor = this.getColorByEaselBoardId(config.sideB.easelBoard);
+        const sideBBackgroundColor = config.sideB.color || '#404040';
         const sideBTextColor = this.getTextColorForBackground(sideBBackgroundColor);
         sideBText.setAttribute('fill', sideBTextColor);
         sideBText.setAttribute('pointer-events', 'none'); // Make text non-interactive to prevent hover conflicts
@@ -1266,7 +1197,7 @@ class LayoutAPI {
                 if (window.posterMap) {
                     const easel = poster.easelBoard || poster.session || 'N/A';
                     const title = poster.title || 'Poster Information';
-                    const bgColor = window.layout?.getColorByEaselBoardId?.(easel) || '#404040';
+                    const bgColor = poster.color || '#404040';
                     const textColor = window.layout?.getTextColorForBackground?.(bgColor) || 'white';
                     const fontSize = easel.length <= 2 ? 12 : easel.length <= 4 ? 10 : easel.length <= 6 ? 9 : 8;
                     window.posterMap.infoTitle.innerHTML = `
@@ -1450,197 +1381,174 @@ class LayoutAPI {
 
         // Combined hover effects for balloon animation and info display
 
-        // Append all elements
+        // Append all elements - skip markers for sides with no poster assigned
+        const sideAUnassigned = !sideAEaselBoard || sideAEaselBoard === 'Unassigned';
+        const sideBUnassigned = !sideBEaselBoard || sideBEaselBoard === 'Unassigned';
+
         group.appendChild(mount);
-        group.appendChild(sideAIndicator);
-        group.appendChild(sideAText);
-        group.appendChild(sideBIndicator);
-        group.appendChild(sideBText);
+        if (!sideAUnassigned) {
+            group.appendChild(sideAIndicator);
+            group.appendChild(sideAText);
+        }
+        if (!sideBUnassigned) {
+            group.appendChild(sideBIndicator);
+            group.appendChild(sideBText);
+        }
 
         return group;
     }
 
     /**
-     * Load posters from TSV file and create poster mounts
-     * @param {string} tsvUrl - URL to the TSV file
-     * @param {Object} layoutConfig - Configuration for poster layout
+     * Parse a tab-separated file's raw text into an array of row arrays,
+     * un-escaping any RFC4180-style quoted cells (spreadsheet TSV exports
+     * often wrap a comma-containing field in "double quotes" even though
+     * comma isn't the delimiter - without unquoting, those quote marks
+     * would show up literally in the UI).
      */
-    async loadPostersFromTSV(posterTsvUrl, mountTsvUrl = 'Mounts.tsv', layoutConfig = {}) {
-        try {
-            // Load both TSV files
-            const [posterResponse, mountResponse] = await Promise.all([
-                fetch(posterTsvUrl),
-                fetch(mountTsvUrl)
-            ]);
-            
-            const posterTsvText = await posterResponse.text();
-            const mountTsvText = await mountResponse.text();
-            
-            const posters = this.parsePosterTSV(posterTsvText);
-            const mounts = this.parseMountTSV(mountTsvText);
-            
-            // Create poster mounts from the combined data
-            this.createPosterMountsFromSeparateData(posters, mounts, layoutConfig);
-            
-        } catch (error) {
-            console.error('Error loading TSV files:', error);
-        }
+    parseTsvText(tsvText) {
+        return tsvText
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .split('\n')
+            .filter(line => line.length > 0)
+            .map(line => line.split('\t').map(cell => {
+                const trimmed = cell.trim();
+                if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
+                    return trimmed.slice(1, -1).replace(/""/g, '"');
+                }
+                return trimmed;
+            }));
     }
 
     /**
-     * Parse poster TSV data into poster objects
+     * Parse the combined poster-data.tsv format (one row per poster, with its
+     * mount position/orientation and marker color inline) into poster objects.
      */
-    parsePosterTSV(tsvText) {
-        const lines = tsvText.split('\n');
-        const headers = lines[0].split('\t').map(h => h.trim());
-        const findIndex = (names, defaultIndex = -1) => {
+    parsePosterDataTSV(tsvText) {
+        const rows = this.parseTsvText(tsvText);
+        if (rows.length === 0) return [];
+
+        const headers = rows[0];
+        const findIndex = (names) => {
             const searchTerms = Array.isArray(names) ? names : [names];
             for (const name of searchTerms) {
                 const index = headers.indexOf(name);
-                if (index !== -1) {
-                    return index;
-                }
+                if (index !== -1) return index;
             }
-            return defaultIndex;
+            return -1;
         };
-        const getValue = (values, index) => {
-            if (index < 0 || index >= values.length) {
-                return '';
-            }
-            const value = values[index];
-            return typeof value === 'string' ? value.trim() : '';
-        };
-        const posters = [];
-        
-        // Find column indices for poster data
+        const getValue = (values, index) => (index >= 0 && index < values.length) ? (values[index] || '') : '';
+
         const categoryIndex = findIndex(['Poster Category', 'Category']);
-        const easelBoardIndex = findIndex('Easel Board', 1);
-        const titleIndex = findIndex('Poster Title', 2);
-        const studentsIndex = findIndex('Student(s)', 3);
-        const mentorIndex = findIndex('Faculty/Mentor', 4);
+        const easelBoardIndex = findIndex('Easel Board');
+        const titleIndex = findIndex('Poster Title');
+        const studentsIndex = findIndex(['Students', 'Student(s)']);
+        const mentorIndex = findIndex(['Faculty', 'Faculty/Mentor']);
         const mountIdIndex = findIndex('Mount ID');
         const sideIndex = findIndex('Side');
-        
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
-            
-            const values = line.split('\t');
-            if (values.length >= 5) {
-                const poster = {
-                    category: getValue(values, categoryIndex),
-                    easelBoard: getValue(values, easelBoardIndex),
-                    title: getValue(values, titleIndex),
-                    students: getValue(values, studentsIndex),
-                    facultyMentor: getValue(values, mentorIndex)
-                };
-                
-                // Add mount and side data if columns exist
-                if (mountIdIndex >= 0) {
-                    const mountValue = getValue(values, mountIdIndex);
-                    if (mountValue) {
-                        poster.mountId = mountValue;
-                    }
-                }
-                if (sideIndex >= 0) {
-                    const sideValue = getValue(values, sideIndex);
-                    if (sideValue) {
-                        poster.side = sideValue;
-                    }
-                }
-                
-                posters.push(poster);
-            }
+        const xCoordIndex = findIndex('X Coordinate');
+        const yCoordIndex = findIndex('Y Coordinate');
+        const orientationIndex = findIndex('Orientation');
+        const colorIndex = findIndex('Color');
+
+        const posters = [];
+        for (let i = 1; i < rows.length; i++) {
+            const values = rows[i];
+            if (!values.some(v => v)) continue; // skip blank lines
+
+            posters.push({
+                category: getValue(values, categoryIndex),
+                easelBoard: getValue(values, easelBoardIndex),
+                title: getValue(values, titleIndex),
+                students: getValue(values, studentsIndex),
+                facultyMentor: getValue(values, mentorIndex),
+                mountId: getValue(values, mountIdIndex),
+                side: getValue(values, sideIndex),
+                xCoord: parseFloat(getValue(values, xCoordIndex)),
+                yCoord: parseFloat(getValue(values, yCoordIndex)),
+                orientation: (getValue(values, orientationIndex) || 'vertical').toLowerCase(),
+                color: getValue(values, colorIndex)
+            });
         }
-        
+
         return posters;
     }
 
     /**
-     * Parse mount TSV data into mount objects
+     * Load posters from the combined poster-data.tsv file and create poster mounts
+     * @param {string} dataTsvUrl - URL to the combined poster-data.tsv file
+     * @param {Object} layoutConfig - Configuration for poster layout
      */
-    parseMountTSV(tsvText) {
-        const lines = tsvText.split('\n');
-        const headers = lines[0].split('\t').map(h => h.trim());
-        const mounts = [];
-        
-        // Find column indices for mount data
-        const mountIdIndex = headers.indexOf('Mount ID') || 0;
-        const xCoordIndex = headers.indexOf('X Coordinate') || 1;
-        const yCoordIndex = headers.indexOf('Y Coordinate') || 2;
-        const orientationIndex = headers.indexOf('Orientation') || 3;
-        
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
-            
-            const values = line.split('\t');
-            if (values.length >= 4) {
-                const mount = {
-                    mountId: values[mountIdIndex]?.trim(),
-                    xCoord: parseFloat(values[xCoordIndex]) || 0,
-                    yCoord: parseFloat(values[yCoordIndex]) || 0,
-                    orientation: values[orientationIndex]?.trim().toLowerCase() || 'vertical'
-                };
-                
-                mounts.push(mount);
-            }
+    async loadPostersFromDataTSV(dataTsvUrl = 'data/poster-data.tsv', layoutConfig = {}) {
+        try {
+            const response = await fetch(dataTsvUrl);
+            const tsvText = await response.text();
+            const posters = this.parsePosterDataTSV(tsvText);
+
+            console.log(`Loaded ${posters.length} posters from ${dataTsvUrl}`);
+
+            this.createPosterMountsFromData(posters, layoutConfig);
+        } catch (error) {
+            console.error('Error loading poster data TSV:', error);
         }
-        
-        return mounts;
     }
 
     /**
-     * Create poster mounts from separate poster and mount data
+     * Create poster mounts from the combined poster-data rows, grouped by Mount ID.
+     * Each poster's own Color column drives its marker fill (default gray for
+     * unassigned mount sides, which have no poster row/color of their own).
      */
-    createPosterMountsFromSeparateData(posters, mounts, layoutConfig) {
-        // Create a map of mount data by mount ID for easy lookup
-        const mountMap = new Map();
-        mounts.forEach(mount => {
-            mountMap.set(mount.mountId, mount);
-        });
+    createPosterMountsFromData(posters, layoutConfig) {
+        const DEFAULT_COLOR = '#404040';
+
+        const toSideData = (poster) => poster ? {
+            title: poster.title,
+            students: poster.students,
+            facultyMentor: poster.facultyMentor,
+            category: poster.category,
+            easelBoard: poster.easelBoard,
+            color: poster.color || DEFAULT_COLOR
+        } : {
+            title: 'Available Space',
+            students: 'No poster assigned',
+            facultyMentor: 'N/A',
+            category: 'Available',
+            easelBoard: 'Unassigned',
+            color: DEFAULT_COLOR
+        };
 
         // Group posters by mount ID
         const mountGroups = new Map();
-        
         posters.forEach(poster => {
-            if (poster.mountId && mountMap.has(poster.mountId)) {
-                if (!mountGroups.has(poster.mountId)) {
-                    mountGroups.set(poster.mountId, []);
-                }
-                mountGroups.get(poster.mountId).push(poster);
+            if (!poster.mountId) return;
+            if (!mountGroups.has(poster.mountId)) {
+                mountGroups.set(poster.mountId, []);
             }
+            mountGroups.get(poster.mountId).push(poster);
         });
-        
-        // Create poster mounts for each group
+
         mountGroups.forEach((mountPosters, mountId) => {
-            const mountData = mountMap.get(mountId);
-            if (!mountData) return;
-            
+            const primary = mountPosters[0];
+            if (Number.isNaN(primary.xCoord) || Number.isNaN(primary.yCoord)) return;
+
+            const orientation = primary.orientation || 'vertical';
+            const position = { x: primary.xCoord, y: primary.yCoord };
+
             const lonePoster = mountPosters.find(poster => this.isLoneMarkerBoard(poster.easelBoard));
             if (lonePoster && mountPosters.length === 1) {
                 this.addLoneMarker({
                     id: `lone-marker-${lonePoster.easelBoard}`,
-                    position: { x: mountData.xCoord, y: mountData.yCoord },
-                    orientation: mountData.orientation,
-                    poster: {
-                        title: lonePoster.title,
-                        students: lonePoster.students,
-                        facultyMentor: lonePoster.facultyMentor,
-                        category: lonePoster.category,
-                        easelBoard: lonePoster.easelBoard
-                    }
+                    position,
+                    orientation,
+                    poster: toSideData(lonePoster)
                 });
                 return;
             }
-            
-            const orientation = mountData.orientation || 'vertical';
-            const position = { x: mountData.xCoord, y: mountData.yCoord };
-            
+
             // Sort posters by their designated side
             let sideAPosters = [];
             let sideBPosters = [];
-            
+
             mountPosters.forEach(poster => {
                 const side = poster.side;
                 if (orientation === 'horizontal') {
@@ -1673,225 +1581,15 @@ class LayoutAPI {
                     }
                 }
             });
-            
-            const sideAPoster = sideAPosters[0] || null;
-            const sideBPoster = sideBPosters[0] || null;
-            
+
             this.addPosterMount({
                 id: mountId,
-                position: position,
-                orientation: orientation,
-                sideA: sideAPoster ? {
-                    title: sideAPoster.title,
-                    students: sideAPoster.students,
-                    facultyMentor: sideAPoster.facultyMentor,
-                    category: sideAPoster.category,
-                    easelBoard: sideAPoster.easelBoard
-                } : {
-                    title: 'Available Space',
-                    students: 'No poster assigned',
-                    facultyMentor: 'N/A',
-                    category: 'Available',
-                    easelBoard: 'Unassigned'
-                },
-                sideB: sideBPoster ? {
-                    title: sideBPoster.title,
-                    students: sideBPoster.students,
-                    facultyMentor: sideBPoster.facultyMentor,
-                    category: sideBPoster.category,
-                    easelBoard: sideBPoster.easelBoard
-                } : {
-                    title: 'Available Space',
-                    students: 'No poster assigned',
-                    facultyMentor: 'N/A',
-                    category: 'Available',
-                    easelBoard: 'Unassigned'
-                }
+                position,
+                orientation,
+                sideA: toSideData(sideAPosters[0] || null),
+                sideB: toSideData(sideBPosters[0] || null)
             });
         });
-    }
-
-    /**
-     * Create poster mounts from poster data (legacy method)
-     */
-    createPosterMounts(posters, layoutConfig) {
-        const {
-            startX = 300,
-            startY = 200,
-            spacing = 60,
-            postersPerRow = 10,
-            alternateOrientation = true
-        } = layoutConfig;
-
-        // First, check if we have positioning data in the TSV
-        const hasPositioningData = posters.some(p => p.mountId || (p.xCoord !== undefined && p.yCoord !== undefined));
-        
-        if (hasPositioningData) {
-            // Use positioning data from TSV
-            this.createPositionedMounts(posters);
-        } else {
-            // Fall back to grid layout
-            this.createGridMounts(posters, layoutConfig);
-        }
-    }
-    
-    /**
-     * Create mounts based on specific positioning data from TSV
-     */
-    createPositionedMounts(posters) {
-        const mountGroups = new Map();
-        
-        // Group posters by mount ID or create individual mounts
-        posters.forEach(poster => {
-            if (poster.mountId) {
-                // Group by mount ID
-                if (!mountGroups.has(poster.mountId)) {
-                    mountGroups.set(poster.mountId, []);
-                }
-                mountGroups.get(poster.mountId).push(poster);
-            } else if (poster.xCoord !== undefined && poster.yCoord !== undefined) {
-                // Create individual mount with coordinates
-                const mountId = `mount-${poster.easelBoard || Math.random().toString(36).substr(2, 9)}`;
-                mountGroups.set(mountId, [poster]);
-            }
-        });
-        
-        // Create poster mounts for each group
-        mountGroups.forEach((mountPosters, mountId) => {
-            const primaryPoster = mountPosters[0];
-            const orientation = primaryPoster.orientation || 'vertical';
-            
-            // Determine position from first poster with coordinates
-            let position = { x: 400, y: 400 }; // default
-            if (primaryPoster.xCoord !== undefined && primaryPoster.yCoord !== undefined) {
-                position = { x: primaryPoster.xCoord, y: primaryPoster.yCoord };
-            }
-            
-            // Sort posters by their designated side
-            let sideAPosters = [];
-            let sideBPosters = [];
-            
-            mountPosters.forEach(poster => {
-                const side = poster.side;
-                if (orientation === 'horizontal') {
-                    // For horizontal: North goes to A, South goes to B
-                    if (side === 'North') {
-                        sideAPosters.push(poster);
-                    } else if (side === 'South') {
-                        sideBPosters.push(poster);
-                    } else {
-                        // Default assignment if no side specified
-                        if (sideAPosters.length === 0) {
-                            sideAPosters.push(poster);
-                        } else {
-                            sideBPosters.push(poster);
-                        }
-                    }
-                } else {
-                    // For vertical: West goes to A, East goes to B
-                    if (side === 'West') {
-                        sideAPosters.push(poster);
-                    } else if (side === 'East') {
-                        sideBPosters.push(poster);
-                    } else {
-                        // Default assignment if no side specified
-                        if (sideAPosters.length === 0) {
-                            sideAPosters.push(poster);
-                        } else {
-                            sideBPosters.push(poster);
-                        }
-                    }
-                }
-            });
-            
-            const sideAPoster = sideAPosters[0] || null;
-            const sideBPoster = sideBPosters[0] || null;
-            
-            this.addPosterMount({
-                id: mountId,
-                position: position,
-                orientation: orientation,
-                sideA: sideAPoster ? {
-                    title: sideAPoster.title,
-                    students: sideAPoster.students,
-                    facultyMentor: sideAPoster.facultyMentor,
-                    category: sideAPoster.category,
-                    easelBoard: sideAPoster.easelBoard
-                } : {
-                    title: 'Available Space',
-                    students: 'No poster assigned',
-                    facultyMentor: 'N/A',
-                    category: 'Available',
-                    easelBoard: 'Unassigned'
-                },
-                sideB: sideBPoster ? {
-                    title: sideBPoster.title,
-                    students: sideBPoster.students,
-                    facultyMentor: sideBPoster.facultyMentor,
-                    category: sideBPoster.category,
-                    easelBoard: sideBPoster.easelBoard
-                } : {
-                    title: 'Available Space',
-                    students: 'No poster assigned',
-                    facultyMentor: 'N/A',
-                    category: 'Available',
-                    easelBoard: 'Unassigned'
-                }
-            });
-        });
-    }
-    
-    /**
-     * Create mounts in grid layout (fallback)
-     */
-    createGridMounts(posters, layoutConfig) {
-        const {
-            startX = 300,
-            startY = 200,
-            spacing = 60,
-            postersPerRow = 10,
-            alternateOrientation = true
-        } = layoutConfig;
-
-        // Group posters in pairs for two-sided mounts
-        for (let i = 0; i < posters.length; i += 2) {
-            const posterA = posters[i];
-            const posterB = posters[i + 1] || null;
-
-            const mountIndex = Math.floor(i / 2);
-            const row = Math.floor(mountIndex / postersPerRow);
-            const col = mountIndex % postersPerRow;
-            
-            const x = startX + (col * spacing);
-            const y = startY + (row * spacing);
-            const orientation = alternateOrientation && mountIndex % 2 === 0 ? 'vertical' : 'horizontal';
-
-            this.addPosterMount({
-                id: `poster-mount-${mountIndex + 1}`,
-                position: { x, y },
-                orientation: orientation,
-                sideA: {
-                    title: posterA.title,
-                    students: posterA.students,
-                    facultyMentor: posterA.facultyMentor,
-                    category: posterA.category,
-                    easelBoard: posterA.easelBoard
-                },
-                sideB: posterB ? {
-                    title: posterB.title,
-                    students: posterB.students,
-                    facultyMentor: posterB.facultyMentor,
-                    category: posterB.category,
-                    easelBoard: posterB.easelBoard
-                } : {
-                    title: 'Available Space',
-                    students: 'No poster assigned',
-                    facultyMentor: 'N/A',
-                    category: 'Available',
-                    easelBoard: 'Unassigned'
-                }
-            });
-        }
     }
 
     /**
