@@ -574,8 +574,8 @@ let isPanning = false;
     getPanSpeedMultiplier() {
         const zoomRange = Math.max(this.maxZoom - this.minZoom, 0.0001);
         const normalized = (this.currentZoom - this.minZoom) / zoomRange;
-        const minMultiplier = 1;
-        const maxMultiplier = 3;
+        const minMultiplier = 1.3;
+        const maxMultiplier = 3.6;
 
         return minMultiplier + normalized * (maxMultiplier - minMultiplier);
     }
