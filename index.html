@@ -313,6 +313,11 @@
             pointer-events: none;
         }
 
+        .easel-pill--table {
+            width: 40px;
+            height: 40px;
+        }
+
         .info-description {
             font-size: 1.5rem;
             color: #444;
@@ -755,11 +760,6 @@ body.map-fullscreen .table-responsive {
             vertical-align: middle;
         }
 
-        .easel-cell svg {
-            margin-right: 6px;
-            vertical-align: middle;
-        }
-
 
         #tsvTable tr {
             transition: background-color 0.3s ease;
@@ -1197,16 +1197,16 @@ body.map-fullscreen .table-responsive {
             }
 
             .map-container {
-                flex: none;
+                flex: 1 1 50%;
                 width: 100%;
                 min-height: 220px;
-                height: 40vh;
+                height: auto;
             }
 
             .table-container {
                 width: 100%;
-                flex: 1;
-                min-height: 0;
+                flex: 1 1 50%;
+                min-height: 220px;
                 height: auto;
                 display: flex;
                 flex-direction: column;
@@ -1450,17 +1450,31 @@ body.map-fullscreen .table-responsive {
                 .replace(/</g, '&lt;');
         }
 
-        function createColorIcon(color, category) {
-            // The color dot is decorative shorthand for category - on mobile the
-            // text "Poster Category" column is hidden to save space, so color
-            // would otherwise be the ONLY way this info is conveyed (fails WCAG
-            // 1.4.1 Use of Color, and screen readers get nothing at all). Giving
-            // the dot an accessible name keeps the category available everywhere.
-            const label = category ? `${category} category` : 'Category color indicator';
+        function createColorIcon(color, category, easelId) {
+            // Matches the map marker/tooltip pill style: the easel ID sits
+            // inside the colored circle rather than as a separate dot+text.
+            // The color still doubles as category shorthand - on mobile the
+            // "Poster Category" text column is hidden to save space, so
+            // color would otherwise be the ONLY way that info is conveyed
+            // (fails WCAG 1.4.1 Use of Color, and screen readers get nothing
+            // at all). The aria-label keeps category available everywhere.
+            const bgColor = color || '#404040';
+            const textColor = (window.layout && typeof window.layout.getTextColorForBackground === 'function')
+                ? window.layout.getTextColorForBackground(bgColor)
+                : 'white';
+            const text = (easelId || '').toString();
+            const fontSize = text.length <= 2 ? 13 : text.length <= 4 ? 11 : text.length <= 6 ? 10 : 9;
+            const label = category
+                ? `${text ? text + ', ' : ''}${category} category`
+                : (text || 'Category color indicator');
             const safeLabel = escapeAttr(label);
-            return `<svg width="16" height="16" viewBox="0 0 24 24" role="img" aria-label="${safeLabel}" style="display: inline-block; margin-right: 8px; vertical-align: middle;">
-                      <circle cx="12" cy="12" r="10" fill="${color || '#404040'}"/>
-                    </svg>`;
+            const safeText = escapeAttr(text);
+            return `<span class="easel-pill easel-pill--table" role="img" aria-label="${safeLabel}">
+                        <svg class="easel-pill__svg" viewBox="0 0 36 36" role="presentation" focusable="false">
+                            <circle cx="18" cy="18" r="16" fill="${bgColor}" stroke="white" stroke-width="2"></circle>
+                            <text x="18" y="18" fill="${textColor}" font-size="${fontSize}" dominant-baseline="middle" text-anchor="middle">${safeText}</text>
+                        </svg>
+                    </span>`;
         }
 
         // Global variables for marker management
@@ -1662,9 +1676,9 @@ body.map-fullscreen .table-responsive {
                     }
 
                     if (headerName === 'Easel Board') {
-                        const colorIcon = createColorIcon(posterColor, posterCategory);
+                        const colorIcon = createColorIcon(posterColor, posterCategory, easelBoard);
                         const classes = ['easel-cell'].concat(cellClasses).join(' ').trim();
-                        rowHtml += `<td class="${classes}">${colorIcon}${cell}</td>`;
+                        rowHtml += `<td class="${classes}">${colorIcon}</td>`;
                     } else {
                         rowHtml += `<td${cellClasses.length ? ` class="${cellClasses.join(' ')}"` : ''}>${cell}</td>`;
                     }
