@@ -90,7 +90,13 @@ class PosterSessionMap {
 
         this.baseWidth = 1078;
         this.baseHeight = 1558;
-        
+
+        // Screen-pixel margins (bottom-sheet, safe areas) that the camera
+        // should treat as "not usable" - fitting/centering leaves this much
+        // room clear on each edge instead of using the full container.
+        // Zero on desktop and until the mobile bottom sheet sets it.
+        this.viewportInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+
         this.initializeData();
         this.initializeEventListeners();
         this.updateFullScreenUI();
@@ -167,6 +173,10 @@ let isPanning = false;
         let lastTouchEndTime = 0;
         let lastTouchEndX = 0;
         let lastTouchEndY = 0;
+        let panStartTime = 0;
+        let tapCancelledInertia = false;
+        const MAPTAP_MAX_DISTANCE = 10;
+        const MAPTAP_MAX_DURATION_MS = 300;
         const doubleTapThresholdMs = 350;
         const doubleTapMaxDistance = 40;
         const velocityConfig = {
@@ -199,7 +209,8 @@ let isPanning = false;
             target?.closest?.('[data-side]') ||
             target?.closest?.('.color-marker') ||
             target?.closest?.('[data-point-id]') ||
-            target?.closest?.('#tablePanel')
+            target?.closest?.('#tablePanel') ||
+            target?.closest?.('#sheetDimOverlay')
         );
 
         const getTouchDistance = (touchA, touchB) => {
@@ -289,6 +300,12 @@ let isPanning = false;
             startY = clientY;
             initialPanX = this.panX;
             initialPanY = this.panY;
+            panStartTime = performance.now();
+            // A touch that grabs a running inertia glide to stop it is a
+            // deliberate "stop the map" gesture, not a tap - maptap (below)
+            // checks this so bottom-sheet.js doesn't collapse the sheet
+            // when someone was just stopping a flick.
+            tapCancelledInertia = Boolean(this.panInertiaFrame);
             this.stopPanInertia(true);
             this.stopPanAnimation();
             lastPointerTime = 0;
@@ -331,11 +348,12 @@ let isPanning = false;
         this.svg.style.cursor = 'grab';
 
         this.svg.addEventListener('mousedown', (e) => {
-            const isInteractiveElement = e.target.closest('[data-side]') || 
+            const isInteractiveElement = e.target.closest('[data-side]') ||
                                        e.target.closest('.color-marker') ||
                                        e.target.closest('[data-point-id]') ||
                                        e.target.classList.contains('color-marker') ||
-                                       e.target.closest('#tablePanel');
+                                       e.target.closest('#tablePanel') ||
+                                       e.target.closest('#sheetDimOverlay');
             if (!isInteractiveElement) {
                 e.preventDefault();
                 beginPan(e.clientX, e.clientY, 'mouse');
@@ -390,7 +408,7 @@ let isPanning = false;
             const touch = touches[0];
             const touchTarget = document.elementFromPoint(touch.clientX, touch.clientY);
 
-            if (touchTarget && touchTarget.closest('#tablePanel')) {
+            if (touchTarget && (touchTarget.closest('#tablePanel') || touchTarget.closest('#sheetDimOverlay'))) {
                 this.stopPanInertia(true);
                 isPanning = false;
                 return;
@@ -442,7 +460,7 @@ let isPanning = false;
 
             const touch = touches[0];
             const moveTarget = document.elementFromPoint(touch.clientX, touch.clientY);
-            if (moveTarget && moveTarget.closest('#tablePanel')) {
+            if (moveTarget && (moveTarget.closest('#tablePanel') || moveTarget.closest('#sheetDimOverlay'))) {
                 if (isPanning) {
                     this.stopPanInertia(true);
                     this.stopPanAnimation();
@@ -477,6 +495,29 @@ let isPanning = false;
                 const changedTouch = e.changedTouches && e.changedTouches[0];
                 const tapX = changedTouch ? changedTouch.clientX : null;
                 const tapY = changedTouch ? changedTouch.clientY : null;
+
+                // maptap: a genuine tap on open map space - not a marker,
+                // not a drag, not a touch that grabbed a running inertia
+                // glide to stop it. bottom-sheet.js listens for this to
+                // collapse the sheet from Half/Full (tap-the-map-to-dismiss,
+                // matching Google/Apple Maps). isPanning is still true here
+                // (endPan() hasn't run yet this cycle) whenever this touch
+                // began as a legitimate map gesture - a touch that started
+                // on #tablePanel/#sheetDimOverlay/a marker never set it.
+                if (isPanning && tapX !== null) {
+                    const tapDuration = performance.now() - panStartTime;
+                    const tapDistance = Math.hypot(tapX - startX, tapY - startY);
+                    const isMarkerTarget = e.target && (
+                        e.target.closest?.('[data-side]') ||
+                        e.target.closest?.('.color-marker') ||
+                        e.target.closest?.('[data-point-id]')
+                    );
+                    if (!isMarkerTarget && !tapCancelledInertia &&
+                        tapDistance <= MAPTAP_MAX_DISTANCE && tapDuration <= MAPTAP_MAX_DURATION_MS) {
+                        this.svg.dispatchEvent(new CustomEvent('maptap', { bubbles: true }));
+                    }
+                }
+
                 const withinTime = now - lastTouchEndTime <= doubleTapThresholdMs;
                 const withinDistance = tapX !== null &&
                     Math.hypot(tapX - lastTouchEndX, tapY - lastTouchEndY) <= doubleTapMaxDistance;
@@ -507,7 +548,7 @@ let isPanning = false;
                 if (touchCount === 1) {
                     const remainingTouch = touches[0];
                     const remainingTarget = document.elementFromPoint(remainingTouch.clientX, remainingTouch.clientY);
-                    if (remainingTarget && remainingTarget.closest('#tablePanel')) {
+                    if (remainingTarget && (remainingTarget.closest('#tablePanel') || remainingTarget.closest('#sheetDimOverlay'))) {
                         this.stopPanInertia(true);
                         isPanning = false;
                         return;
@@ -831,6 +872,68 @@ let isPanning = false;
      * isn't laid out yet. The returned zoom is NOT clamped against
      * this.minZoom/maxZoom - callers decide how to clamp for their purpose.
      */
+    /**
+     * CSS pixels per SVG user-unit, AT ZOOM 1. #posterMap has no explicit
+     * preserveAspectRatio, so it defaults to "xMidYMid meet": the smaller of
+     * the two axis scales is what actually constrains rendering, and the
+     * other axis gets letterboxed (blank margin, since the container's
+     * rendered aspect ratio generally won't match the 1078x1558 canvas -
+     * especially the full-screen mobile map). This mirrors that algorithm.
+     * Zero-independent of zoom: the SVG's rendered CSS box size doesn't
+     * change when the viewBox zooms, only baseWidth/baseHeight are fixed
+     * references, so this is a single reusable constant per layout.
+     */
+    getBaseRenderScale() {
+        const rect = this.svg.getBoundingClientRect();
+        if (!rect || rect.width === 0 || rect.height === 0) {
+            return null;
+        }
+        return Math.min(rect.width / this.baseWidth, rect.height / this.baseHeight);
+    }
+
+    /**
+     * Converts this.viewportInsets (screen px) into SVG user-space units,
+     * letterbox-corrected via getBaseRenderScale(). `zoom1` values are in
+     * the same units as baseWidth/baseHeight (used when solving for a
+     * target zoom in computeContentFitZoomAndPan). `atCurrentZoom` values
+     * are in the same units as calculatePanForCoordinates()'s local
+     * width/height (baseWidth/this.currentZoom), used for the anchor shift
+     * and clamp extension there. Conservative: treats the whole pixel inset
+     * as unusable content space even if part of it would have landed in
+     * existing letterbox margin anyway - never hides content under the
+     * sheet, just occasionally a hair more zoomed-out than the strict
+     * minimum.
+     */
+    getInsetUserUnits() {
+        const zero = { top: 0, right: 0, bottom: 0, left: 0 };
+        const K = this.getBaseRenderScale();
+        if (!K) {
+            return { zoom1: { ...zero }, atCurrentZoom: { ...zero } };
+        }
+        const { top, right, bottom, left } = this.viewportInsets;
+        const zoom1 = { top: top / K, right: right / K, bottom: bottom / K, left: left / K };
+        const z = this.currentZoom > 0 ? this.currentZoom : 1;
+        const atCurrentZoom = {
+            top: zoom1.top / z,
+            right: zoom1.right / z,
+            bottom: zoom1.bottom / z,
+            left: zoom1.left / z
+        };
+        return { zoom1, atCurrentZoom };
+    }
+
+    /**
+     * Sets the screen-pixel margins the camera should treat as obscured
+     * (currently just the mobile bottom sheet + safe areas). Merges given
+     * keys, leaves others as-is. Purely stored - affects only the next
+     * fit/center call, never triggers a re-render itself, so callers should
+     * only call this when they're about to fit/center anyway (e.g. once a
+     * sheet drag settles, never mid-drag).
+     */
+    setViewportInsets(partial = {}) {
+        Object.assign(this.viewportInsets, partial);
+    }
+
     computeContentFitZoomAndPan(paddingRatio = 0.1) {
         const groupIds = ['poster-areas', 'poster-mounts-layer'];
         let combined = null;
@@ -876,8 +979,12 @@ let isPanning = false;
         const height = maxY - minY;
         if (!(width > 0) || !(height > 0)) return null;
 
-        const zoomForWidth = this.baseWidth / width;
-        const zoomForHeight = this.baseHeight / height;
+        const { zoom1: inset } = this.getInsetUserUnits();
+        const availableWidth = this.baseWidth - inset.left - inset.right;
+        const availableHeight = this.baseHeight - inset.top - inset.bottom;
+
+        const zoomForWidth = availableWidth / width;
+        const zoomForHeight = availableHeight / height;
 
         return {
             zoom: Math.min(zoomForWidth, zoomForHeight),
@@ -1213,17 +1320,43 @@ let isPanning = false;
         }
     }
 
+    /**
+     * Pans so (x,y) lands at the center of the current *visible* area - the
+     * viewBox minus this.viewportInsets - rather than always the dead
+     * center of the viewBox. With zero insets this reduces exactly to the
+     * original center-on-(x,y) behavior (see the derivation in the mobile
+     * bottom-sheet plan), so every existing caller (fitToContent,
+     * centerOnCoordinates/search-and-row centering, resetView) gets
+     * inset-awareness automatically with no call-site changes.
+     *
+     * Derivation: getViewBox() defines viewX = -panX + (baseWidth-width)/2.
+     * The visible sub-rectangle spans local viewbox coordinates
+     * [insetLeft, width-insetRight] x [insetTop, height-insetBottom], whose
+     * center is width/2 + (insetLeft-insetRight)/2 horizontally (and the Y
+     * equivalent) - the usual midpoint, shifted by half the *difference*
+     * between opposing insets. Setting viewX + that local center = x and
+     * solving for viewX (then panX = (baseWidth-width)/2 - viewX, unchanged
+     * from the original) gives the anchorOffset terms below. The clamp
+     * range is extended by the insets too: at minZoom the viewbox already
+     * spans nearly the whole canvas, leaving ~0 slack in the original
+     * [0, baseWidth-width] range, which would silently clamp the anchor
+     * shift away right when it matters most (see setViewportInsets).
+     */
     calculatePanForCoordinates(x, y) {
         const width = this.baseWidth / this.currentZoom;
         const height = this.baseHeight / this.currentZoom;
+        const { atCurrentZoom: inset } = this.getInsetUserUnits();
 
-        const minX = 0;
-        const minY = 0;
-        const maxX = Math.max(minX, this.baseWidth - width);
-        const maxY = Math.max(minY, this.baseHeight - height);
+        const anchorOffsetX = (inset.left - inset.right) / 2;
+        const anchorOffsetY = (inset.top - inset.bottom) / 2;
 
-        const desiredX = x - width / 2;
-        const desiredY = y - height / 2;
+        const minX = -inset.left;
+        const minY = -inset.top;
+        const maxX = Math.max(minX, this.baseWidth - width + inset.right);
+        const maxY = Math.max(minY, this.baseHeight - height + inset.bottom);
+
+        const desiredX = x - width / 2 - anchorOffsetX;
+        const desiredY = y - height / 2 - anchorOffsetY;
 
         const clampedX = Math.min(Math.max(desiredX, minX), maxX);
         const clampedY = Math.min(Math.max(desiredY, minY), maxY);
@@ -1337,254 +1470,9 @@ let isPanning = false;
 // Make the class available globally
 window.PosterSessionMap = PosterSessionMap;
 
-function initializeMobileTableScrollFix() {
-    const tablePanel = document.getElementById('tablePanel');
-    if (!tablePanel) {
-        return;
-    }
-
-    const tableWrapper = tablePanel.querySelector('.table-responsive');
-    if (!tableWrapper) {
-        return;
-    }
-
-    tableWrapper.addEventListener('touchstart', (ev) => {
-        ev.stopPropagation();
-    }, { passive: true });
-
-    tableWrapper.addEventListener('touchmove', (ev) => {
-        ev.stopPropagation();
-    }, { passive: false });
-
-    const mobileQuery = window.matchMedia('(max-width: 768px)');
-    const ensureManualTouchScroll = () => {
-        if (!mobileQuery.matches) {
-            return;
-        }
-
-        if (tableWrapper.dataset.manualTouchScroll === 'true') {
-            return;
-        }
-
-        let lastY = null;
-        let lastTime = null;
-        let velocityY = 0;
-        let inertiaFrame = null;
-
-        // Tuned for a gentle coast rather than a long fling - this hand-rolled
-        // touch handler (needed so touchmove can stopPropagation before the
-        // map's own pan/pinch handlers see it) replaces native momentum
-        // scrolling, so without this the table feels dead/jerky on release.
-        const VELOCITY_SMOOTHING = 0.3;
-        const MAX_VELOCITY = 1.8; // px/ms, safety clamp on raw finger speed
-        const INERTIA_DAMPENING = 0.55; // scales down the captured flick speed
-        const INERTIA_DECAY = 0.90; // per ~16ms frame
-        const MIN_VELOCITY = 0.03; // px/ms, below this we just stop
-
-        const stopInertia = () => {
-            if (inertiaFrame) {
-                cancelAnimationFrame(inertiaFrame);
-                inertiaFrame = null;
-            }
-        };
-
-        const startInertia = () => {
-            if (Math.abs(velocityY) < MIN_VELOCITY) {
-                velocityY = 0;
-                return;
-            }
-
-            stopInertia();
-            let last = performance.now();
-
-            const step = (time) => {
-                const dt = time - last;
-                last = time;
-
-                const maxScrollTop = tableWrapper.scrollHeight - tableWrapper.clientHeight;
-                const nextScrollTop = tableWrapper.scrollTop + velocityY * dt;
-                tableWrapper.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
-
-                if (tableWrapper.scrollTop <= 0 || tableWrapper.scrollTop >= maxScrollTop) {
-                    velocityY = 0;
-                    inertiaFrame = null;
-                    return;
-                }
-
-                const decayFactor = Math.pow(INERTIA_DECAY, dt / 16);
-                velocityY *= decayFactor;
-
-                if (Math.abs(velocityY) < MIN_VELOCITY) {
-                    velocityY = 0;
-                    inertiaFrame = null;
-                    return;
-                }
-
-                inertiaFrame = requestAnimationFrame(step);
-            };
-
-            inertiaFrame = requestAnimationFrame(step);
-        };
-
-        const onTouchStart = (event) => {
-            if (event.touches.length !== 1) {
-                lastY = null;
-                return;
-            }
-            stopInertia();
-            velocityY = 0;
-            lastY = event.touches[0].clientY;
-            lastTime = performance.now();
-        };
-
-        const onTouchMove = (event) => {
-            if (event.touches.length !== 1 || lastY === null) {
-                return;
-            }
-
-            const currentY = event.touches[0].clientY;
-            const now = performance.now();
-            const deltaY = lastY - currentY;
-            const deltaTime = lastTime ? now - lastTime : 0;
-
-            if (Math.abs(deltaY) < 0.5) {
-                return;
-            }
-
-            const previousScrollTop = tableWrapper.scrollTop;
-            tableWrapper.scrollTop += deltaY;
-            const scrolled = tableWrapper.scrollTop !== previousScrollTop;
-
-            if (scrolled) {
-                event.preventDefault();
-            }
-
-            if (deltaTime > 0) {
-                const instantVelocity = Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, deltaY / deltaTime));
-                velocityY = (1 - VELOCITY_SMOOTHING) * velocityY + VELOCITY_SMOOTHING * instantVelocity;
-            }
-
-            lastY = currentY;
-            lastTime = now;
-        };
-
-        const onTouchEnd = () => {
-            lastY = null;
-            lastTime = null;
-            velocityY *= INERTIA_DAMPENING;
-            startInertia();
-        };
-
-        tableWrapper.addEventListener('touchstart', onTouchStart, { passive: false });
-        tableWrapper.addEventListener('touchmove', onTouchMove, { passive: false });
-        tableWrapper.addEventListener('touchend', onTouchEnd);
-        tableWrapper.addEventListener('touchcancel', onTouchEnd);
-
-        tableWrapper.dataset.manualTouchScroll = 'true';
-    };
-
-    let scheduled = false;
-    let lastHeight = null;
-
-    const computeHeight = () => {
-        if (!mobileQuery.matches) {
-            lastHeight = null;
-            tableWrapper.style.removeProperty('--table-scroll-max-height');
-            tableWrapper.style.removeProperty('height');
-            tableWrapper.style.removeProperty('max-height');
-            return;
-        }
-
-        const isFullscreen = document.body.classList.contains('map-fullscreen');
-
-        if (isFullscreen) {
-            if (lastHeight !== null) {
-                tableWrapper.style.setProperty('--table-scroll-max-height', `${lastHeight}px`);
-                tableWrapper.style.height = `${lastHeight}px`;
-                tableWrapper.style.maxHeight = `${lastHeight}px`;
-            }
-            return;
-        }
-
-        const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        const tableRect = tableWrapper.getBoundingClientRect();
-        const marginBottom = 12;
-        const minHeight = 180;
-        const available = viewportHeight - tableRect.top - marginBottom;
-
-        if (!Number.isFinite(available)) {
-            return;
-        }
-
-        const nextHeight = Math.max(minHeight, Math.floor(available));
-
-        if (nextHeight === lastHeight) {
-            return;
-        }
-
-        lastHeight = nextHeight;
-        const heightValue = `${nextHeight}px`;
-        tableWrapper.style.setProperty('--table-scroll-max-height', heightValue);
-        tableWrapper.style.height = heightValue;
-        tableWrapper.style.maxHeight = heightValue;
-    };
-
-    const scheduleUpdate = () => {
-        if (scheduled) {
-            return;
-        }
-        scheduled = true;
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                scheduled = false;
-                computeHeight();
-                ensureManualTouchScroll();
-            });
-        });
-    };
-
-    const attachMediaListener = () => {
-        if (typeof mobileQuery.addEventListener === 'function') {
-            mobileQuery.addEventListener('change', scheduleUpdate);
-        } else if (typeof mobileQuery.addListener === 'function') {
-            mobileQuery.addListener(scheduleUpdate);
-        }
-    };
-
-    attachMediaListener();
-
-    window.addEventListener('resize', scheduleUpdate);
-    window.addEventListener('orientationchange', scheduleUpdate);
-
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', scheduleUpdate);
-        window.visualViewport.addEventListener('scroll', scheduleUpdate);
-    }
-
-    const classObserver = new MutationObserver(scheduleUpdate);
-    classObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-
-    tablePanel.addEventListener('transitionend', (event) => {
-        if (event.target === tablePanel) {
-            scheduleUpdate();
-        }
-    });
-
-    if (typeof ResizeObserver === 'function') {
-        const resizeObserver = new ResizeObserver(() => {
-            scheduleUpdate();
-        });
-        resizeObserver.observe(tablePanel);
-    }
-
-    ensureManualTouchScroll();
-    scheduleUpdate();
-}
-
 // Initialize the map when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.posterMap = new PosterSessionMap();
-    initializeMobileTableScrollFix();
 });
 
 // Export for potential external use
