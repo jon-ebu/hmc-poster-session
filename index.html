@@ -35,6 +35,71 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             transition: background 0.3s ease;
             flex-shrink: 0;
+            position: relative;
+        }
+
+        .info-button {
+            position: absolute;
+            top: 50%;
+            right: 16px;
+            transform: translateY(-50%);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 1.5px solid rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.35);
+            color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            cursor: pointer;
+            transition: background 0.2s ease, border-color 0.2s ease;
+            z-index: 20;
+        }
+
+        .info-button:hover,
+        .info-button:focus-visible {
+            background: rgba(255, 255, 255, 0.65);
+            border-color: rgba(0, 0, 0, 0.5);
+            outline: none;
+        }
+
+        .info-button svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .info-popover {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 16px;
+            width: 270px;
+            max-width: calc(100vw - 32px);
+            background: #fff;
+            color: #333;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            padding: 14px 16px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            text-align: left;
+            z-index: 25;
+        }
+
+        .info-popover[hidden] {
+            display: none;
+        }
+
+        .info-popover a {
+            color: #026a86;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .info-popover a:hover {
+            text-decoration: underline;
         }
 
 
@@ -806,7 +871,7 @@ body.map-fullscreen .table-responsive {
             align-items: center;
             gap: 8px;
             box-sizing: border-box;
-            height: 52px;
+            height: 44px;
             padding: 0 18px;
             border: 2px solid #ddd;
             border-radius: 8px;
@@ -902,8 +967,16 @@ body.map-fullscreen .table-responsive {
         }
 
         .category-filter-options {
+            /* Without flex:1/min-height:0 this grows to fit every checkbox
+               (content size), so the panel's overflow:hidden just hard-clips
+               whatever doesn't fit instead of this list's own overflow-y:auto
+               ever getting a chance to kick in - the actual cause of options
+               getting cut off with no way to scroll to them. */
+            flex: 1;
+            min-height: 0;
             overflow-y: auto;
             padding: 6px 4px;
+            -webkit-overflow-scrolling: touch;
         }
 
         .category-filter-option {
@@ -955,13 +1028,18 @@ body.map-fullscreen .table-responsive {
                 right: 0;
                 width: 280px;
                 max-width: calc(100vw - 40px);
+                /* Cap against actual available viewport height too, not just
+                   a fixed 360px - on a short mobile screen the dropdown can
+                   open close to the bottom edge with less room than that. */
+                max-height: min(360px, calc(100vh - 160px));
+                max-height: min(360px, calc(100dvh - 160px));
             }
         }
 
         #searchbar {
             width: 100%;
             box-sizing: border-box;
-            height: 52px;
+            height: 44px;
             padding: 0 48px 0 16px;
             border: 2px solid #ddd;
             border-radius: 8px;
@@ -976,12 +1054,6 @@ body.map-fullscreen .table-responsive {
             box-shadow: 0 0 0 3px rgba(0, 127, 163, 0.15);
         }
 
-        @media (min-width: 992px) {
-            #searchbar {
-                font-size: inherit;
-            }
-        }
-        
         #clearSearch {
             position: absolute;
             top: 50%;
@@ -1145,6 +1217,22 @@ body.map-fullscreen .table-responsive {
                 position: sticky;
                 top: 0;
                 z-index: 1000;
+            }
+
+            .info-button {
+                right: 10px;
+                width: 26px;
+                height: 26px;
+            }
+
+            .info-button svg {
+                width: 14px;
+                height: 14px;
+            }
+
+            .info-popover {
+                right: 10px;
+                width: 240px;
             }
 
             #tsvTable {
@@ -1337,6 +1425,16 @@ body.map-fullscreen .table-responsive {
             </a>
             <h1>HMC Poster Session <span class="subheading">Fall 2026</span></h1>
         </div>
+        <button type="button" id="infoButtonToggle" class="info-button" aria-haspopup="true" aria-expanded="false" aria-controls="infoPopover" aria-label="About this site">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+                <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zM8.93 6.588 7.93 11.29c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+            </svg>
+        </button>
+        <div class="info-popover" id="infoPopover" role="dialog" aria-label="About this site" hidden>
+            Built by Jon Ebueng (CIS) with the help of generative AI.
+            <br><br>
+            Questions or feedback? Email <a href="mailto:jebueng@hmc.edu">jebueng@hmc.edu</a>.
+        </div>
     </div>
 
     <div class="main-content">
@@ -1410,12 +1508,12 @@ body.map-fullscreen .table-responsive {
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                                 <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
                             </svg>
-                            <span class="category-filter-label">Categories</span>
+                            <span class="category-filter-label">Departments</span>
                             <span id="categoryFilterCount" class="filter-count-badge" hidden>0</span>
                         </button>
                         <div id="categoryFilterDropdown" class="category-filter-dropdown" hidden>
                             <div class="category-filter-header">
-                                <span>Filter by Category</span>
+                                <span>Filter by Department</span>
                                 <button type="button" id="categoryFilterClear" class="category-filter-clear">Clear</button>
                             </div>
                             <div id="categoryFilterOptions" class="category-filter-options"></div>
@@ -1450,6 +1548,12 @@ body.map-fullscreen .table-responsive {
                 .replace(/</g, '&lt;');
         }
 
+        // "Biology" -> "department", "Biology, Chemistry" -> "departments"
+        function departmentWord(category) {
+            const count = String(category || '').split(',').map(c => c.trim()).filter(Boolean).length;
+            return count > 1 ? 'departments' : 'department';
+        }
+
         function createColorIcon(color, category, easelId) {
             // Matches the map marker/tooltip pill style: the easel ID sits
             // inside the colored circle rather than as a separate dot+text.
@@ -1465,8 +1569,8 @@ body.map-fullscreen .table-responsive {
             const text = (easelId || '').toString();
             const fontSize = text.length <= 2 ? 13 : text.length <= 4 ? 11 : text.length <= 6 ? 10 : 9;
             const label = category
-                ? `${text ? text + ', ' : ''}${category} category`
-                : (text || 'Category color indicator');
+                ? `${text ? text + ', ' : ''}${category} ${departmentWord(category)}`
+                : (text || 'Department color indicator');
             const safeLabel = escapeAttr(label);
             const safeText = escapeAttr(text);
             return `<span class="easel-pill easel-pill--table" role="img" aria-label="${safeLabel}">
@@ -1617,7 +1721,7 @@ body.map-fullscreen .table-responsive {
                 }
 
                 const displayHeader = header === 'Easel Board' ? 'Easel' : 
-                                    header === 'Poster Category' ? 'Category' : header;
+                                    header === 'Poster Category' ? 'Department' : header;
 
                 return `<th${classes.length ? ` class=\"${classes.join(' ')}\"` : ''}>${displayHeader}</th>`;
             }).join('') + '</tr></thead>';
@@ -2055,7 +2159,7 @@ body.map-fullscreen .table-responsive {
             const sortedCategories = [...categories].sort((a, b) => a.localeCompare(b));
 
             if (sortedCategories.length === 0) {
-                optionsContainer.innerHTML = '<div class="category-filter-empty">No categories available</div>';
+                optionsContainer.innerHTML = '<div class="category-filter-empty">No departments available</div>';
                 return;
             }
 
@@ -2146,6 +2250,43 @@ body.map-fullscreen .table-responsive {
                     applyFilters();
                 });
             }
+        }
+
+        function initializeInfoButton() {
+            const toggleBtn = document.getElementById('infoButtonToggle');
+            const popover = document.getElementById('infoPopover');
+
+            if (!toggleBtn || !popover) return;
+
+            const closePopover = () => {
+                if (popover.hidden) return;
+                popover.hidden = true;
+                toggleBtn.setAttribute('aria-expanded', 'false');
+            };
+
+            toggleBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const isOpen = !popover.hidden;
+                if (isOpen) {
+                    closePopover();
+                } else {
+                    popover.hidden = false;
+                    toggleBtn.setAttribute('aria-expanded', 'true');
+                }
+            });
+
+            popover.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+
+            document.addEventListener('click', closePopover);
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && !popover.hidden) {
+                    closePopover();
+                    toggleBtn.focus();
+                }
+            });
         }
 
         function initializeSearch() {
@@ -2587,6 +2728,7 @@ body.map-fullscreen .table-responsive {
             console.log('made by jon ebueng from CIS :)');
             initializeLayout();
             loadTableData();
+            initializeInfoButton();
             preventMapZoomOut(); // Initial check
         });
     </script>

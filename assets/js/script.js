@@ -165,7 +165,10 @@ let isPanning = false;
         let pinchStartDistance = 0;
         let pinchStartZoom = this.currentZoom;
         let lastTouchEndTime = 0;
+        let lastTouchEndX = 0;
+        let lastTouchEndY = 0;
         const doubleTapThresholdMs = 350;
+        const doubleTapMaxDistance = 40;
         const velocityConfig = {
             max: 0.75,
             smoothing: 0.22,
@@ -178,6 +181,13 @@ let isPanning = false;
         let currentPanMultiplier = 1;
 
         const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+        const isInteractiveTarget = (target) => Boolean(
+            target?.closest?.('[data-side]') ||
+            target?.closest?.('.color-marker') ||
+            target?.closest?.('[data-point-id]') ||
+            target?.closest?.('#tablePanel')
+        );
 
         const getTouchDistance = (touchA, touchB) => {
             const dx = touchA.clientX - touchB.clientX;
@@ -329,6 +339,15 @@ let isPanning = false;
             endPan();
         });
 
+        // Double-click to zoom in, anchored at the click point.
+        this.svg.addEventListener('dblclick', (e) => {
+            if (isInteractiveTarget(e.target)) {
+                return;
+            }
+            e.preventDefault();
+            this.animateZoomTo(this.currentZoom * 2, e.clientX, e.clientY, { duration: 300, curve: EASE_FLYTO });
+        });
+
         // Global click handler to close info panel when clicking empty map space
         this.svg.addEventListener('click', (e) => {
             const clickedMarker = e.target.closest('[data-side]') || e.target.closest('.color-marker');
@@ -441,10 +460,30 @@ let isPanning = false;
             const isSingleFingerRelease = !pinchActive && endedAllTouches && changedTouchCount === 1;
 
             if (isSingleFingerRelease) {
-                if (now - lastTouchEndTime <= doubleTapThresholdMs) {
+                const changedTouch = e.changedTouches && e.changedTouches[0];
+                const tapX = changedTouch ? changedTouch.clientX : null;
+                const tapY = changedTouch ? changedTouch.clientY : null;
+                const withinTime = now - lastTouchEndTime <= doubleTapThresholdMs;
+                const withinDistance = tapX !== null &&
+                    Math.hypot(tapX - lastTouchEndX, tapY - lastTouchEndY) <= doubleTapMaxDistance;
+
+                if (withinTime) {
+                    // Also blocks the browser's own native double-tap-zoom.
                     e.preventDefault();
                 }
-                lastTouchEndTime = now;
+
+                if (withinTime && withinDistance && tapX !== null && !isInteractiveTarget(e.target)) {
+                    this.animateZoomTo(this.currentZoom * 2, tapX, tapY, { duration: 300, curve: EASE_FLYTO });
+                    // Reset so a third quick tap starts a fresh pair rather
+                    // than immediately chaining into another zoom.
+                    lastTouchEndTime = 0;
+                    lastTouchEndX = 0;
+                    lastTouchEndY = 0;
+                } else {
+                    lastTouchEndTime = now;
+                    lastTouchEndX = tapX ?? 0;
+                    lastTouchEndY = tapY ?? 0;
+                }
             } else if (endedAllTouches) {
                 lastTouchEndTime = now;
             }

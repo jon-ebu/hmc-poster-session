@@ -1,4 +1,11 @@
 // Layout API for SVG Placement and Management
+
+// "Biology" -> "Department", "Biology, Chemistry" -> "Departments"
+function departmentLabel(category) {
+    const count = String(category || '').split(',').map(c => c.trim()).filter(Boolean).length;
+    return count > 1 ? 'Departments' : 'Department';
+}
+
 class LayoutAPI {
     constructor(mapInstance) {
         this.map = mapInstance;
@@ -515,8 +522,8 @@ class LayoutAPI {
 
         const orientation = (config.orientation || 'vertical').toLowerCase();
         const isVertical = orientation === 'vertical';
-        const boardWidth = isVertical ? 16 : 60;
-        const boardHeight = isVertical ? 60 : 16;
+        const boardWidth = isVertical ? 10 : 60;
+        const boardHeight = isVertical ? 60 : 10;
 
         const board = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         board.setAttribute('x', -boardWidth / 2);
@@ -678,7 +685,7 @@ class LayoutAPI {
                     window.posterMap.infoDescription.innerHTML = `
                         <p><strong>Student(s):</strong> ${config.poster.students || 'N/A'}</p>
                         <p><strong>Faculty/Mentor:</strong> ${config.poster.facultyMentor || 'N/A'}</p>
-                        <p><strong>Category:</strong> ${config.poster.category || 'N/A'}</p>
+                        <p><strong>${departmentLabel(config.poster.category)}:</strong> ${config.poster.category || 'N/A'}</p>
                     `;
                     
                     // Position based on marker location and content length
@@ -941,8 +948,8 @@ class LayoutAPI {
 
         // Determine mount dimensions based on orientation - made larger and more proportional
         const isVertical = config.orientation === 'vertical';
-        const width = isVertical ? 16 : 60;
-        const height = isVertical ? 60 : 16;
+        const width = isVertical ? 10 : 60;
+        const height = isVertical ? 60 : 10;
 
         // Create the mount base (thin rectangle)
         const mount = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -1212,7 +1219,7 @@ class LayoutAPI {
                     window.posterMap.infoDescription.innerHTML = `
                         <p><strong>Student(s):</strong> ${poster.students || poster.authors || 'N/A'}</p>
                         <p><strong>Faculty/Mentor:</strong> ${poster.facultyMentor || 'N/A'}</p>
-                        <p><strong>Category:</strong> ${poster.category || 'N/A'}</p>
+                        <p><strong>${departmentLabel(poster.category)}:</strong> ${poster.category || 'N/A'}</p>
                     `;
                     
                     // Position based on marker location and content length
