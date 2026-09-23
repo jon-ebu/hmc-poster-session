@@ -278,7 +278,11 @@
             transform: scale(0.9);
             transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
             pointer-events: none;
-            z-index: 10020;
+            /* Must always win against every other overlay in the app - the
+               map control buttons (z-index 10001) and, in fullscreen mode,
+               the slid-out table panel (which used to also sit at 10020,
+               an exact tie broken unpredictably by DOM order). */
+            z-index: 100000;
             --arrow-size: 14px;
             --arrow-base: 24px;
             /* Dynamic positioning and arrow will be set via JavaScript */
@@ -442,7 +446,9 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
-            z-index: 10000; /* Higher than info panel to ensure visibility */
+            z-index: 10000; /* Below the info panel (100000) - the tooltip should
+                                cover these buttons when it overlaps them, not
+                                the reverse. */
         }
 
 
@@ -542,7 +548,7 @@ body.map-fullscreen {
     opacity: 0;
     pointer-events: none;
     transition: transform 0.3s ease, opacity 0.3s ease;
-    z-index: 10020;
+    z-index: 10010;
     display: grid;
     grid-template-rows: auto 1fr;
 }
@@ -921,7 +927,13 @@ body.map-fullscreen .table-responsive {
         }
 
         .category-filter-dropdown {
-            position: absolute;
+            /* Fixed (not absolute-anchored to .category-filter) since the
+               element now lives at the end of <body>, outside any container
+               whose z-index could otherwise trap it (see the HTML comment
+               where it's declared). JS sets top/right inline to anchor it
+               under the toggle button on desktop; the mobile media query
+               below overrides to a centered modal instead. */
+            position: fixed;
             top: calc(100% + 8px);
             right: 0;
             width: 300px;
@@ -931,7 +943,10 @@ body.map-fullscreen .table-responsive {
             border-radius: 10px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1);
             border: 1px solid rgba(0,0,0,0.1);
-            z-index: 30;
+            /* Must clear .controls (10000/10001) now that it's a body-level
+               overlay rather than something implicitly stacked by DOM
+               position. */
+            z-index: 10051;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -952,6 +967,12 @@ body.map-fullscreen .table-responsive {
             color: #333;
         }
 
+        .category-filter-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
         .category-filter-clear {
             background: transparent;
             border: none;
@@ -964,6 +985,29 @@ body.map-fullscreen .table-responsive {
 
         .category-filter-clear:hover {
             text-decoration: underline;
+        }
+
+        .category-filter-close {
+            display: none;
+            background: transparent;
+            border: none;
+            font-size: 1.6rem;
+            line-height: 1;
+            color: #555;
+            cursor: pointer;
+            padding: 0 4px;
+        }
+
+        .category-filter-close:hover {
+            color: #000;
+        }
+
+        .category-filter-backdrop {
+            display: none;
+        }
+
+        .category-filter-backdrop[hidden] {
+            display: none;
         }
 
         .category-filter-options {
@@ -1023,16 +1067,41 @@ body.map-fullscreen .table-responsive {
                 display: none;
             }
 
+            /* The anchored-below-the-button dropdown kept getting clipped by
+               ancestor layout no matter how the max-height was tuned (short
+               viewports, sticky headers, etc. all ate into the available
+               space differently). On mobile it's a proper centered modal
+               instead, with its own backdrop and close button, so its size
+               is independent of where the toggle button happens to sit. */
+            .category-filter-backdrop {
+                display: block;
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.45);
+                /* Must clear .controls (10000/10001) - as a true modal this
+                   needs to sit above the map's zoom/reset/fullscreen buttons,
+                   not underneath them. */
+                z-index: 10050;
+            }
+
+            .category-filter-backdrop[hidden] {
+                display: none;
+            }
+
             .category-filter-dropdown {
-                left: auto;
-                right: 0;
-                width: 280px;
-                max-width: calc(100vw - 40px);
-                /* Cap against actual available viewport height too, not just
-                   a fixed 360px - on a short mobile screen the dropdown can
-                   open close to the bottom edge with less room than that. */
-                max-height: min(360px, calc(100vh - 160px));
-                max-height: min(360px, calc(100dvh - 160px));
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                right: auto;
+                transform: translate(-50%, -50%);
+                width: min(340px, calc(100vw - 40px));
+                max-width: none;
+                max-height: min(500px, calc(100dvh - 80px));
+                z-index: 10051;
+            }
+
+            .category-filter-close {
+                display: block;
             }
         }
 
@@ -1511,13 +1580,6 @@ body.map-fullscreen .table-responsive {
                             <span class="category-filter-label">Departments</span>
                             <span id="categoryFilterCount" class="filter-count-badge" hidden>0</span>
                         </button>
-                        <div id="categoryFilterDropdown" class="category-filter-dropdown" hidden>
-                            <div class="category-filter-header">
-                                <span>Filter by Department</span>
-                                <button type="button" id="categoryFilterClear" class="category-filter-clear">Clear</button>
-                            </div>
-                            <div id="categoryFilterOptions" class="category-filter-options"></div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -2206,13 +2268,38 @@ body.map-fullscreen .table-responsive {
             const toggleBtn = document.getElementById('categoryFilterToggle');
             const dropdown = document.getElementById('categoryFilterDropdown');
             const clearBtn = document.getElementById('categoryFilterClear');
+            const closeBtn = document.getElementById('categoryFilterClose');
+            const backdrop = document.getElementById('categoryFilterBackdrop');
 
             if (!toggleBtn || !dropdown) return;
 
             const closeDropdown = () => {
                 if (dropdown.hidden) return;
                 dropdown.hidden = true;
+                if (backdrop) backdrop.hidden = true;
                 toggleBtn.setAttribute('aria-expanded', 'false');
+            };
+
+            // The dropdown now lives at the end of <body> (see where it's
+            // declared) so it can't get trapped inside the sticky filter
+            // bar's low z-index stacking context. That means it can no
+            // longer rely on CSS anchoring to .category-filter's
+            // position:relative - on desktop we compute and set its
+            // position from the toggle button's live rect instead. Mobile
+            // ignores this entirely (the media query centers it as a modal).
+            const isMobileLayout = () => window.matchMedia('(max-width: 768px)').matches;
+
+            const positionDropdown = () => {
+                if (isMobileLayout()) {
+                    dropdown.style.top = '';
+                    dropdown.style.left = '';
+                    dropdown.style.right = '';
+                    return;
+                }
+                const btnRect = toggleBtn.getBoundingClientRect();
+                dropdown.style.top = (btnRect.bottom + 8) + 'px';
+                dropdown.style.left = 'auto';
+                dropdown.style.right = (window.innerWidth - btnRect.right) + 'px';
             };
 
             toggleBtn.addEventListener('click', function(e) {
@@ -2221,7 +2308,9 @@ body.map-fullscreen .table-responsive {
                 if (isOpen) {
                     closeDropdown();
                 } else {
+                    positionDropdown();
                     dropdown.hidden = false;
+                    if (backdrop) backdrop.hidden = false;
                     toggleBtn.setAttribute('aria-expanded', 'true');
                 }
             });
@@ -2229,6 +2318,20 @@ body.map-fullscreen .table-responsive {
             dropdown.addEventListener('click', function(e) {
                 e.stopPropagation();
             });
+
+            // On mobile this is a centered modal with its own backdrop, so a
+            // tap on the dimmed backdrop should close it same as tapping
+            // outside the anchored desktop dropdown does.
+            if (backdrop) {
+                backdrop.addEventListener('click', closeDropdown);
+            }
+
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    closeDropdown();
+                });
+            }
 
             document.addEventListener('click', closeDropdown);
 
@@ -2732,5 +2835,21 @@ body.map-fullscreen .table-responsive {
             preventMapZoomOut(); // Initial check
         });
     </script>
+
+    <!-- Rendered as siblings of everything else (not nested inside the sticky
+         filter bar, which has its own low z-index and would otherwise trap
+         any z-index this modal declares - stacking contexts contain their
+         descendants regardless of the descendant's own z-index value). -->
+    <div id="categoryFilterBackdrop" class="category-filter-backdrop" hidden></div>
+    <div id="categoryFilterDropdown" class="category-filter-dropdown" hidden role="dialog" aria-label="Filter by Department">
+        <div class="category-filter-header">
+            <span>Filter by Department</span>
+            <div class="category-filter-header-actions">
+                <button type="button" id="categoryFilterClear" class="category-filter-clear">Clear</button>
+                <button type="button" id="categoryFilterClose" class="category-filter-close" aria-label="Close filter">&times;</button>
+            </div>
+        </div>
+        <div id="categoryFilterOptions" class="category-filter-options"></div>
+    </div>
 </body>
 </html>
