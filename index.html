@@ -1128,6 +1128,23 @@ body.map-fullscreen .table-responsive {
                 overscroll-behavior: contain;
             }
 
+            /* iOS Safari scrolls the whole document to bring a focused
+               input "into view" even when it's already fully visible
+               inside a position:fixed sheet - shifting the fixed-position
+               map/sheet layout up and out of place along with the address
+               bar collapsing. overflow:hidden alone doesn't stop this;
+               pinning body itself with position:fixed does, since there's
+               then no document scroll position left for iOS to change.
+               Nothing inside body depends on its own box for layout on
+               mobile - .header is hidden and both .map-container/
+               .table-container position themselves via their own
+               position:fixed - so this is safe. */
+            body {
+                position: fixed;
+                inset: 0;
+                width: 100%;
+            }
+
             /* Full-screen bottom-sheet layout: the header is removed
                entirely (not just visually) so the map runs edge to edge,
                including behind the status bar. Branding moves into
@@ -1551,11 +1568,6 @@ body.map-fullscreen .table-responsive {
                         <path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5m5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5M0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5m10 1a1.5 1.5 0 0 1 1.5-1.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0z"/>
                     </svg>
                 </button>
-            </div>
-
-            <div class="info-panel" id="infoPanel">
-                <div class="info-title" id="infoTitle">Select a poster area</div>
-                <div class="info-description" id="infoDescription">Hover over any poster area to view details</div>
             </div>
         </div>
 
@@ -2776,10 +2788,19 @@ body.map-fullscreen .table-responsive {
         });
     </script>
 
-    <!-- Rendered as a sibling of everything else, not nested inside the
-         header: .header is position:sticky with its own z-index at mobile
-         widths, which traps any descendant regardless of that descendant's
-         own z-index. -->
+    <!-- Rendered as a sibling of everything else, not nested inside
+         .map-container: on mobile .map-container is position:fixed with
+         its own (low) z-index, which traps any descendant's z-index
+         regardless of how high it's set - this panel's z-index:100000 was
+         being capped there and rendering underneath the bottom sheet. -->
+    <div class="info-panel" id="infoPanel">
+        <div class="info-title" id="infoTitle">Select a poster area</div>
+        <div class="info-description" id="infoDescription">Hover over any poster area to view details</div>
+    </div>
+
+    <!-- Same reasoning as above: .header is position:sticky with its own
+         z-index at mobile widths, which traps any descendant regardless of
+         that descendant's own z-index. -->
     <div class="info-popover" id="infoPopover" role="dialog" aria-label="About this site" hidden>
         <div class="info-popover-brand">
             <img src="assets/HMC BGW RGB 150dpi.png" alt="HMC Logo">
