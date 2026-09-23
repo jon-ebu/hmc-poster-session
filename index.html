@@ -629,11 +629,65 @@ body.map-fullscreen .table-responsive {
             display: none;
         }
 
+        /* Department filter: one toggle chip per department, the same on
+           desktop and mobile (replaced the old funnel-button + dropdown). */
+        .category-chip-row {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 8px;
+            width: 100%;
+            min-width: 0;
+            overflow-x: auto;
+            padding: 10px 0 2px;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-x;
+            scrollbar-width: none;
+        }
+
+        .category-chip-row::-webkit-scrollbar {
+            display: none;
+        }
+
+        .category-chip {
+            flex: 0 0 auto;
+            padding: 6px 14px;
+            border-radius: 999px;
+            border: 2px solid #ddd;
+            background: #fff;
+            color: #333;
+            font-size: 0.95rem;
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        }
+
+        .category-chip[aria-pressed="true"] {
+            border-color: #007FA3;
+            background: rgba(0, 127, 163, 0.08);
+            color: #007FA3;
+        }
+
+        .category-chip:focus {
+            outline: none;
+        }
+
+        .category-chip:focus-visible {
+            outline: 2px solid #007FA3;
+            outline-offset: 2px;
+        }
+
         #filter-form-container {
             position: sticky;
             top: 0;
             z-index: 6;
             background: inherit;
+            /* #tablePanel is a CSS grid; grid items default to
+               min-width:auto (their content's intrinsic min-content size),
+               which let the chip row's nowrap chips force this whole row -
+               and with it the fixed-position sheet on mobile - wider than
+               the viewport instead of scrolling internally. */
+            min-width: 0;
         }
 
         .table-responsive {
@@ -889,241 +943,9 @@ body.map-fullscreen .table-responsive {
             min-width: 0;
         }
 
-        .category-filter {
-            position: relative;
-            flex: 0 0 auto;
-        }
-
-        .category-filter-btn {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            box-sizing: border-box;
-            height: 44px;
-            padding: 0 18px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            background: #fff;
-            color: #333;
-            font-size: 1.2rem;
-            cursor: pointer;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-            white-space: nowrap;
-        }
-
-        .category-filter-btn svg {
-            width: 20px;
-            height: 20px;
-            flex-shrink: 0;
-        }
-
-        .category-filter-btn:hover {
-            border-color: #007FA3;
-        }
-
-        .category-filter-btn:focus-visible {
-            outline: none;
-            border-color: #007FA3;
-            box-shadow: 0 0 0 3px rgba(0, 127, 163, 0.15);
-        }
-
-        .category-filter-btn.active {
-            border-color: #007FA3;
-            background: rgba(0, 127, 163, 0.08);
-            color: #007FA3;
-        }
-
-        .filter-count-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 20px;
-            height: 20px;
-            padding: 0 6px;
-            border-radius: 10px;
-            background: #007FA3;
-            color: #fff;
-            font-size: 0.8rem;
-            font-weight: 700;
-            line-height: 1;
-        }
-
-        .category-filter-dropdown {
-            /* Fixed (not absolute-anchored to .category-filter) since the
-               element now lives at the end of <body>, outside any container
-               whose z-index could otherwise trap it (see the HTML comment
-               where it's declared). JS sets top/right inline to anchor it
-               under the toggle button on desktop; the mobile media query
-               below overrides to a centered modal instead. */
-            position: fixed;
-            top: calc(100% + 8px);
-            right: 0;
-            width: 300px;
-            max-width: calc(100vw - 40px);
-            max-height: 360px;
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1);
-            border: 1px solid rgba(0,0,0,0.1);
-            /* Must clear .controls (10000/10001) now that it's a body-level
-               overlay rather than something implicitly stacked by DOM
-               position. */
-            z-index: 10051;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .category-filter-dropdown[hidden] {
-            display: none;
-        }
-
-        .category-filter-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            border-bottom: 1px solid #eee;
-            font-size: 1.05rem;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .category-filter-header-actions {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-
-        .category-filter-clear {
-            background: transparent;
-            border: none;
-            color: #026a86;
-            font-size: 0.95rem;
-            font-weight: 600;
-            cursor: pointer;
-            padding: 4px 6px;
-        }
-
-        .category-filter-clear:hover {
-            text-decoration: underline;
-        }
-
-        .category-filter-close {
-            display: none;
-            background: transparent;
-            border: none;
-            font-size: 1.6rem;
-            line-height: 1;
-            color: #555;
-            cursor: pointer;
-            padding: 0 4px;
-        }
-
-        .category-filter-close:hover {
-            color: #000;
-        }
-
-        .category-filter-backdrop {
-            display: none;
-        }
-
-        .category-filter-backdrop[hidden] {
-            display: none;
-        }
-
-        .category-filter-options {
-            /* Without flex:1/min-height:0 this grows to fit every checkbox
-               (content size), so the panel's overflow:hidden just hard-clips
-               whatever doesn't fit instead of this list's own overflow-y:auto
-               ever getting a chance to kick in - the actual cause of options
-               getting cut off with no way to scroll to them. */
-            flex: 1;
-            min-height: 0;
-            overflow-y: auto;
-            padding: 6px 4px;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        .category-filter-option {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            min-height: 44px;
-            box-sizing: border-box;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 1.05rem;
-            color: #222;
-        }
-
-        .category-filter-option:hover {
-            background: #f5f5f5;
-        }
-
-        .category-filter-option input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            accent-color: #007FA3;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-
-        .category-filter-empty {
-            padding: 12px 16px;
-            font-size: 1rem;
-            color: #666;
-        }
-
         @media (max-width: 768px) {
             .filter-controls {
                 gap: 8px;
-            }
-
-            .category-filter-btn {
-                padding: 0 12px;
-            }
-
-            .category-filter-label {
-                display: none;
-            }
-
-            /* The anchored-below-the-button dropdown kept getting clipped by
-               ancestor layout no matter how the max-height was tuned (short
-               viewports, sticky headers, etc. all ate into the available
-               space differently). On mobile it's a proper centered modal
-               instead, with its own backdrop and close button, so its size
-               is independent of where the toggle button happens to sit. */
-            .category-filter-backdrop {
-                display: block;
-                position: fixed;
-                inset: 0;
-                background: rgba(0, 0, 0, 0.45);
-                /* Must clear .controls (10000/10001) - as a true modal this
-                   needs to sit above the map's zoom/reset/fullscreen buttons,
-                   not underneath them. */
-                z-index: 10050;
-            }
-
-            .category-filter-backdrop[hidden] {
-                display: none;
-            }
-
-            .category-filter-dropdown {
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                right: auto;
-                transform: translate(-50%, -50%);
-                width: min(340px, calc(100vw - 40px));
-                max-width: none;
-                max-height: min(500px, calc(100dvh - 80px));
-                z-index: 10051;
-            }
-
-            .category-filter-close {
-                display: block;
             }
         }
 
@@ -1756,16 +1578,8 @@ body.map-fullscreen .table-responsive {
                             <span class="glyphicon glyphicon-remove" aria-hidden="true"></span>
                         </button>
                     </form>
-                    <div class="category-filter">
-                        <button type="button" id="categoryFilterToggle" class="category-filter-btn" aria-haspopup="true" aria-expanded="false" aria-controls="categoryFilterDropdown">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                                <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5zm1 .5v1.308l4.372 4.858A.5.5 0 0 1 7 8.5v5.306l2-.666V8.5a.5.5 0 0 1 .128-.334L13.5 3.308V2z"/>
-                            </svg>
-                            <span class="category-filter-label">Departments</span>
-                            <span id="categoryFilterCount" class="filter-count-badge" hidden>0</span>
-                        </button>
-                    </div>
                 </div>
+                <div class="category-chip-row" id="categoryChipRow" role="group" aria-label="Filter by department"></div>
             </div>
             <div class="table-responsive">
                 <table id="tsvTable" class="table table-striped table-hover">
@@ -2394,8 +2208,8 @@ body.map-fullscreen .table-responsive {
         }
 
         function populateCategoryOptions(tableData) {
-            const optionsContainer = document.getElementById('categoryFilterOptions');
-            if (!optionsContainer) return;
+            const chipRow = document.getElementById('categoryChipRow');
+            if (!chipRow) return;
 
             const headers = tableData[0] || [];
             const categoryIndex = headers.indexOf('Poster Category');
@@ -2414,27 +2228,26 @@ body.map-fullscreen .table-responsive {
             const sortedCategories = [...categories].sort((a, b) => a.localeCompare(b));
 
             if (sortedCategories.length === 0) {
-                optionsContainer.innerHTML = '<div class="category-filter-empty">No departments available</div>';
+                chipRow.innerHTML = '';
                 return;
             }
 
-            optionsContainer.innerHTML = sortedCategories.map(category => {
-                const safeValue = category.replace(/"/g, '&quot;');
-                const id = `category-filter-${category.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
-                return `
-                    <label class="category-filter-option" for="${id}">
-                        <input type="checkbox" id="${id}" value="${safeValue}">
-                        <span>${category}</span>
-                    </label>
-                `;
+            // One toggle chip per department - the sole filter UI on both
+            // desktop and mobile (replaced the old funnel-button dropdown).
+            // selectedCategories is the single source of truth; chips just
+            // render it (see updateCategoryFilterUI).
+            chipRow.innerHTML = sortedCategories.map(category => {
+                const safeLabel = escapeAttr(category);
+                return `<button type="button" class="category-chip" data-category="${safeLabel}" aria-pressed="false">${category}</button>`;
             }).join('');
 
-            optionsContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
-                    if (this.checked) {
-                        selectedCategories.add(this.value);
+            chipRow.querySelectorAll('.category-chip').forEach(chip => {
+                chip.addEventListener('click', function() {
+                    const value = this.dataset.category;
+                    if (selectedCategories.has(value)) {
+                        selectedCategories.delete(value);
                     } else {
-                        selectedCategories.delete(this.value);
+                        selectedCategories.add(value);
                     }
                     updateCategoryFilterUI();
                     applyFilters();
@@ -2443,110 +2256,11 @@ body.map-fullscreen .table-responsive {
         }
 
         function updateCategoryFilterUI() {
-            const toggleBtn = document.getElementById('categoryFilterToggle');
-            const countBadge = document.getElementById('categoryFilterCount');
-            const count = selectedCategories.size;
-
-            if (countBadge) {
-                countBadge.textContent = String(count);
-                countBadge.hidden = count === 0;
-            }
-
-            if (toggleBtn) {
-                toggleBtn.classList.toggle('active', count > 0);
-            }
+            document.querySelectorAll('#categoryChipRow .category-chip').forEach(chip => {
+                chip.setAttribute('aria-pressed', String(selectedCategories.has(chip.dataset.category)));
+            });
         }
 
-        function initializeCategoryFilter() {
-            const toggleBtn = document.getElementById('categoryFilterToggle');
-            const dropdown = document.getElementById('categoryFilterDropdown');
-            const clearBtn = document.getElementById('categoryFilterClear');
-            const closeBtn = document.getElementById('categoryFilterClose');
-            const backdrop = document.getElementById('categoryFilterBackdrop');
-
-            if (!toggleBtn || !dropdown) return;
-
-            const closeDropdown = () => {
-                if (dropdown.hidden) return;
-                dropdown.hidden = true;
-                if (backdrop) backdrop.hidden = true;
-                toggleBtn.setAttribute('aria-expanded', 'false');
-            };
-
-            // The dropdown now lives at the end of <body> (see where it's
-            // declared) so it can't get trapped inside the sticky filter
-            // bar's low z-index stacking context. That means it can no
-            // longer rely on CSS anchoring to .category-filter's
-            // position:relative - on desktop we compute and set its
-            // position from the toggle button's live rect instead. Mobile
-            // ignores this entirely (the media query centers it as a modal).
-            const isMobileLayout = () => window.matchMedia('(max-width: 768px)').matches;
-
-            const positionDropdown = () => {
-                if (isMobileLayout()) {
-                    dropdown.style.top = '';
-                    dropdown.style.left = '';
-                    dropdown.style.right = '';
-                    return;
-                }
-                const btnRect = toggleBtn.getBoundingClientRect();
-                dropdown.style.top = (btnRect.bottom + 8) + 'px';
-                dropdown.style.left = 'auto';
-                dropdown.style.right = (window.innerWidth - btnRect.right) + 'px';
-            };
-
-            toggleBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                const isOpen = !dropdown.hidden;
-                if (isOpen) {
-                    closeDropdown();
-                } else {
-                    positionDropdown();
-                    dropdown.hidden = false;
-                    if (backdrop) backdrop.hidden = false;
-                    toggleBtn.setAttribute('aria-expanded', 'true');
-                }
-            });
-
-            dropdown.addEventListener('click', function(e) {
-                e.stopPropagation();
-            });
-
-            // On mobile this is a centered modal with its own backdrop, so a
-            // tap on the dimmed backdrop should close it same as tapping
-            // outside the anchored desktop dropdown does.
-            if (backdrop) {
-                backdrop.addEventListener('click', closeDropdown);
-            }
-
-            if (closeBtn) {
-                closeBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    closeDropdown();
-                });
-            }
-
-            document.addEventListener('click', closeDropdown);
-
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && !dropdown.hidden) {
-                    closeDropdown();
-                    toggleBtn.focus();
-                }
-            });
-
-            if (clearBtn) {
-                clearBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    selectedCategories.clear();
-                    document.querySelectorAll('#categoryFilterOptions input[type="checkbox"]').forEach(cb => {
-                        cb.checked = false;
-                    });
-                    updateCategoryFilterUI();
-                    applyFilters();
-                });
-            }
-        }
 
         function initializeInfoButton() {
             const toggleBtn = document.getElementById('infoButtonToggle');
@@ -2621,6 +2335,13 @@ body.map-fullscreen .table-responsive {
             const clearBottomContainer = document.getElementById('clearSearchBottomContainer');
             const clearBottomButton = document.getElementById('clearSearchBottom');
 
+            // Mobile only (bottom-sheet.js no-ops elsewhere): focusing the
+            // search field expands the sheet to Full so the keyboard has
+            // room to work instead of fighting a half-open sheet.
+            searchInput.addEventListener('focus', function() {
+                document.dispatchEvent(new CustomEvent('poster-search-focused', { bubbles: true }));
+            });
+
             searchInput.addEventListener('input', function() {
                 applyFilters();
 
@@ -2656,8 +2377,6 @@ body.map-fullscreen .table-responsive {
                     searchInput.focus();
                 });
             }
-
-            initializeCategoryFilter();
         }
 
         function cancelPendingAutoHighlight() {
@@ -3057,25 +2776,10 @@ body.map-fullscreen .table-responsive {
         });
     </script>
 
-    <!-- Rendered as siblings of everything else (not nested inside the sticky
-         filter bar, which has its own low z-index and would otherwise trap
-         any z-index this modal declares - stacking contexts contain their
-         descendants regardless of the descendant's own z-index value). -->
-    <div id="categoryFilterBackdrop" class="category-filter-backdrop" hidden></div>
-    <div id="categoryFilterDropdown" class="category-filter-dropdown" hidden role="dialog" aria-label="Filter by Department">
-        <div class="category-filter-header">
-            <span>Filter by Department</span>
-            <div class="category-filter-header-actions">
-                <button type="button" id="categoryFilterClear" class="category-filter-clear">Clear</button>
-                <button type="button" id="categoryFilterClose" class="category-filter-close" aria-label="Close filter">&times;</button>
-            </div>
-        </div>
-        <div id="categoryFilterOptions" class="category-filter-options"></div>
-    </div>
-
-    <!-- Same reasoning as the filter dropdown above: .header is
-         position:sticky with its own z-index at mobile widths, which traps
-         any descendant regardless of that descendant's own z-index. -->
+    <!-- Rendered as a sibling of everything else, not nested inside the
+         header: .header is position:sticky with its own z-index at mobile
+         widths, which traps any descendant regardless of that descendant's
+         own z-index. -->
     <div class="info-popover" id="infoPopover" role="dialog" aria-label="About this site" hidden>
         <div class="info-popover-brand">
             <img src="assets/HMC BGW RGB 150dpi.png" alt="HMC Logo">

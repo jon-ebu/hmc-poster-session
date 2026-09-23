@@ -147,6 +147,14 @@
                 }
             });
 
+            // Focusing the search field expands to Full so the on-screen
+            // keyboard doesn't fight a half-open sheet.
+            document.addEventListener('poster-search-focused', () => {
+                if (this.mobileQuery.matches) {
+                    this._goTo('full');
+                }
+            });
+
             [this.handle, this.filterForm, this.listEl].forEach((surface) => {
                 this._bindDragSurface(surface);
             });

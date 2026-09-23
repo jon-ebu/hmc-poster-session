@@ -8,7 +8,8 @@
 [X] Phase 1: full-screen map, header removed on mobile (branding + info button move into the sheet), collapsed/half/full draggable sheet, dim overlay, Fit-all pill, camera viewport insets so fit/center/search-row-centering all land above the sheet
 [X] Phase 2: drag-to-snap with fling detection, tap-the-handle-to-cycle, tap-the-map-to-collapse, list scroll only at Full with a scrollTop-aware handoff back to the sheet, reduced-motion support
 [X] Row selection drops the sheet to Half so the marker it centers on isn't hidden under a Full sheet (pulled forward from Phase 4 after testing showed the gap)
-[] Phase 3: search-focus opens Full, category filter chip row (replaces the centered modal on mobile), card-style list rows
+[X] Phase 3 (partial): search-focus opens the sheet to Full; the funnel button + dropdown/centered-modal category filter is replaced everywhere (not just mobile, per a mid-build call) by a single horizontally-scrolling row of toggle chips, one per department, shared between desktop and mobile. Chips are neutrally colored, not tinted per department - checked the data directly and colors are assigned per easel-prefix *combination* (e.g. `CSHC` vs `CS` vs `CSEP` differ even though all involve Computer Science), not per single department, so a "department color" legend wasn't accurate to build.
+[] Phase 3 (remaining): card-style list rows on mobile
 [] Phase 4: sheet detail view on row/marker tap, back-navigation, `?easel=` deep links
 [] Phase 5: confirm/polish the desktop side-panel layout against the same PRD, marker focus/labeling accessibility pass
 
