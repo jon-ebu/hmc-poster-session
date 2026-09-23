@@ -71,7 +71,13 @@
         }
 
         .info-popover {
-            position: absolute;
+            /* Fixed, not absolute-anchored to .header - the element now
+               lives at the end of <body> (see the HTML comment where it's
+               declared) because .header is position:sticky with its own
+               z-index at mobile widths, which traps any descendant's
+               z-index regardless of how high it's set. JS sets top/right
+               inline from the info button's live rect when opened. */
+            position: fixed;
             top: calc(100% + 8px);
             right: 16px;
             width: 270px;
@@ -85,7 +91,9 @@
             font-size: 0.9rem;
             line-height: 1.5;
             text-align: left;
-            z-index: 25;
+            /* Must clear the map's control buttons (.controls, z-index
+               10000/10001). */
+            z-index: 100000;
         }
 
         .info-popover[hidden] {
@@ -970,7 +978,7 @@ body.map-fullscreen .table-responsive {
         .category-filter-header-actions {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 14px;
         }
 
         .category-filter-clear {
@@ -1300,7 +1308,9 @@ body.map-fullscreen .table-responsive {
             }
 
             .info-popover {
-                right: 10px;
+                /* right is set inline by JS from the button's live rect now
+                   (see initializeInfoButton) - only width is still a pure
+                   CSS concern here. */
                 width: 240px;
             }
 
@@ -1499,11 +1509,6 @@ body.map-fullscreen .table-responsive {
                 <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zM8.93 6.588 7.93 11.29c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
             </svg>
         </button>
-        <div class="info-popover" id="infoPopover" role="dialog" aria-label="About this site" hidden>
-            Built by Jon Ebueng (CIS) with the help of generative AI.
-            <br><br>
-            Questions or feedback? Email <a href="mailto:jebueng@hmc.edu">jebueng@hmc.edu</a>.
-        </div>
     </div>
 
     <div class="main-content">
@@ -2367,12 +2372,22 @@ body.map-fullscreen .table-responsive {
                 toggleBtn.setAttribute('aria-expanded', 'false');
             };
 
+            // The popover lives at the end of <body> now (see where it's
+            // declared), not nested in .header, so it needs its position
+            // computed from the button's live rect instead of CSS anchoring.
+            const positionPopover = () => {
+                const btnRect = toggleBtn.getBoundingClientRect();
+                popover.style.top = (btnRect.bottom + 8) + 'px';
+                popover.style.right = (window.innerWidth - btnRect.right) + 'px';
+            };
+
             toggleBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const isOpen = !popover.hidden;
                 if (isOpen) {
                     closePopover();
                 } else {
+                    positionPopover();
                     popover.hidden = false;
                     toggleBtn.setAttribute('aria-expanded', 'true');
                 }
@@ -2850,6 +2865,15 @@ body.map-fullscreen .table-responsive {
             </div>
         </div>
         <div id="categoryFilterOptions" class="category-filter-options"></div>
+    </div>
+
+    <!-- Same reasoning as the filter dropdown above: .header is
+         position:sticky with its own z-index at mobile widths, which traps
+         any descendant regardless of that descendant's own z-index. -->
+    <div class="info-popover" id="infoPopover" role="dialog" aria-label="About this site" hidden>
+        Built by Jon Ebueng (CIS) with the help of generative AI.
+        <br><br>
+        Questions or feedback? Email <a href="mailto:jebueng@hmc.edu">jebueng@hmc.edu</a>.
     </div>
 </body>
 </html>
