@@ -179,6 +179,19 @@ let isPanning = false;
         const TOUCH_PAN_MULTIPLIER = 1.4;
         let panInputType = 'mouse';
         let currentPanMultiplier = 1;
+        // The viewBox is baseWidth/currentZoom content-units wide, but the
+        // SVG usually renders much narrower than baseWidth (1078) in CSS
+        // pixels - especially in the mobile map panel. Without correcting
+        // for that ratio, a screen-pixel of drag only pans a fraction of a
+        // screen-pixel's worth of content, which reads as "sluggish"/stiff
+        // panning that gets worse the smaller the map is drawn. Measured
+        // once per gesture (not per move-event) to avoid forcing layout on
+        // every pointermove.
+        let renderScaleFactor = 1;
+        const measureRenderScaleFactor = () => {
+            const rect = this.svg.getBoundingClientRect();
+            renderScaleFactor = rect.width > 0 ? this.baseWidth / rect.width : 1;
+        };
 
         const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -252,7 +265,7 @@ let isPanning = false;
             if (lastPointerTime) {
                 const deltaTime = now - lastPointerTime;
                 if (deltaTime > 0) {
-                    const appliedMultiplier = this.getPanSpeedMultiplier() * currentPanMultiplier;
+                    const appliedMultiplier = this.getPanSpeedMultiplier() * currentPanMultiplier * renderScaleFactor;
                     const deltaPanX = ((clientX - lastPointerX) / this.currentZoom) * appliedMultiplier;
                     const deltaPanY = ((clientY - lastPointerY) / this.currentZoom) * appliedMultiplier;
                     const vx = deltaPanX / deltaTime;
@@ -271,6 +284,7 @@ let isPanning = false;
             isPanning = true;
             panInputType = inputType;
             currentPanMultiplier = panInputType === 'touch' ? TOUCH_PAN_MULTIPLIER : 1;
+            measureRenderScaleFactor();
             startX = clientX;
             startY = clientY;
             initialPanX = this.panX;
@@ -285,7 +299,7 @@ let isPanning = false;
         };
 
         const updatePan = (clientX, clientY) => {
-            const appliedMultiplier = this.getPanSpeedMultiplier() * currentPanMultiplier;
+            const appliedMultiplier = this.getPanSpeedMultiplier() * currentPanMultiplier * renderScaleFactor;
             const dx = ((clientX - startX) / this.currentZoom) * appliedMultiplier;
             const dy = ((clientY - startY) / this.currentZoom) * appliedMultiplier;
             this.panX = initialPanX + dx;
@@ -611,12 +625,15 @@ let isPanning = false;
     }
 
     getPanSpeedMultiplier() {
-        const zoomRange = Math.max(this.maxZoom - this.minZoom, 0.0001);
-        const normalized = (this.currentZoom - this.minZoom) / zoomRange;
-        const minMultiplier = 1.3;
-        const maxMultiplier = 3.6;
-
-        return minMultiplier + normalized * (maxMultiplier - minMultiplier);
+        // Dividing the raw screen-pixel delta by currentZoom (at the call
+        // sites) already correctly scales pan distance for how zoomed in
+        // the map is, and renderScaleFactor separately corrects for the
+        // SVG's rendered CSS size vs. its viewBox. This is just a flat
+        // "looseness" tuning knob on top of both - intentionally NOT
+        // zoom-dependent, since ramping it by zoom (as before) double
+        // counted the zoom correction and made high zoom levels pan far
+        // too fast once the other two corrections were fixed.
+        return 1.15;
     }
 
     renderMap() {
