@@ -1128,6 +1128,23 @@ body.map-fullscreen .table-responsive {
                 overscroll-behavior: contain;
             }
 
+            /* iOS Safari scrolls the whole document to bring a focused
+               input "into view" even when it's already fully visible
+               inside a position:fixed sheet - shifting the fixed-position
+               map/sheet layout up and out of place along with the address
+               bar collapsing. overflow:hidden alone doesn't stop this;
+               pinning body itself with position:fixed does, since there's
+               then no document scroll position left for iOS to change.
+               Nothing inside body depends on its own box for layout on
+               mobile - .header is hidden and both .map-container/
+               .table-container position themselves via their own
+               position:fixed - so this is safe. */
+            body {
+                position: fixed;
+                inset: 0;
+                width: 100%;
+            }
+
             /* Full-screen bottom-sheet layout: the header is removed
                entirely (not just visually) so the map runs edge to edge,
                including behind the status bar. Branding moves into
