@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>2026 Poster Session - Interactive Map</title>
     <link rel="icon" type="image/png" href="assets/HMC%20BGW%20RGB%20150dpi.png">
     <style>
@@ -24,6 +24,7 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
+            height: 100dvh;
             touch-action: manipulation;
         }
 
@@ -108,6 +109,12 @@
 
         .info-popover a:hover {
             text-decoration: underline;
+        }
+
+        /* Only shown on mobile (see the mobile media query), where the
+           header - and with it the HMC logo/title - is hidden entirely. */
+        .info-popover-brand {
+            display: none;
         }
 
 
@@ -613,6 +620,13 @@ body.map-fullscreen .table-responsive {
             gap: 0;
             position: relative;
             touch-action: pan-y;
+        }
+
+        /* Only meaningful in the mobile bottom-sheet layout (see the mobile
+           media query) - desktop's fixed sidebar table isn't draggable. */
+        .sheet-handle,
+        #sheetDimOverlay {
+            display: none;
         }
 
         #filter-form-container {
@@ -1284,27 +1298,64 @@ body.map-fullscreen .table-responsive {
         @media (max-width: 768px) {
             html,
             body {
+                height: 100vh;
                 height: 100dvh;
+                max-height: 100vh;
                 max-height: 100dvh;
                 overflow: hidden;
                 overscroll-behavior: contain;
             }
 
+            /* Full-screen bottom-sheet layout: the header is removed
+               entirely (not just visually) so the map runs edge to edge,
+               including behind the status bar. Branding moves into
+               #infoPopover (see .info-popover-brand) and the info button
+               moves into the sheet's search row (see bottom-sheet.js). */
             .header {
-                position: sticky;
-                top: 0;
-                z-index: 1000;
+                display: none;
             }
 
-            .info-button {
-                right: 10px;
-                width: 26px;
-                height: 26px;
+            .info-popover-brand {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 10px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid rgba(0, 0, 0, 0.1);
             }
 
-            .info-button svg {
-                width: 14px;
-                height: 14px;
+            .info-popover-brand img {
+                height: 34px;
+                width: auto;
+                flex-shrink: 0;
+            }
+
+            .info-popover-brand h2 {
+                margin: 0;
+                font-size: 1rem;
+                line-height: 1.3;
+                font-weight: 700;
+                color: #333;
+            }
+
+            .info-popover-brand h2 span {
+                display: block;
+                font-size: 0.8rem;
+                font-weight: 500;
+                color: #666;
+            }
+
+            /* #infoButtonToggle is relocated here at runtime (see
+               relocateInfoButton in bottom-sheet.js) - override its
+               header-relative absolute positioning so it sits inline as a
+               third flex item alongside the search field and the
+               Departments button. */
+            #filter-form-container #infoButtonToggle {
+                position: static;
+                transform: none;
+                flex: 0 0 auto;
+                width: 34px;
+                height: 34px;
             }
 
             .info-popover {
@@ -1355,39 +1406,157 @@ body.map-fullscreen .table-responsive {
                 white-space: normal;
             }
 
+            /* Full-screen map with a draggable bottom sheet (see
+               bottom-sheet.js), replacing the old stacked 50/50 map/table
+               split. .main-content itself no longer does any layout work -
+               both children are position:fixed against the viewport, not
+               positioned relative to .main-content or to the (now hidden)
+               header. */
             .main-content {
-                flex-direction: column;
-                gap: 10px;
-                padding: 10px;
-                padding-bottom: 0;
-                overflow: hidden;
+                display: block;
+                padding: 0;
             }
 
             .map-container {
-                flex: 1 1 50%;
-                width: 100%;
-                min-height: 220px;
-                height: auto;
+                position: fixed;
+                inset: 0;
+                border-radius: 0;
+                z-index: 1;
+                margin: 0;
             }
 
-            .table-container {
-                width: 100%;
-                flex: 1 1 50%;
-                min-height: 220px;
-                height: auto;
+            /* Dim overlay: sibling of .map-container, sits above the map
+               and below the sheet. Opacity is driven directly by
+               bottom-sheet.js (style.opacity, not a CSS variable) as the
+               sheet approaches Full. */
+            #sheetDimOverlay {
+                display: block;
+                position: fixed;
+                inset: 0;
+                z-index: 2;
+                background: #000;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 300ms ease;
+            }
+
+            #sheetDimOverlay.sheet-dragging {
+                transition: none;
+            }
+
+            #sheetDimOverlay.sheet-state-full {
+                pointer-events: auto;
+            }
+
+            .sheet-handle {
                 display: flex;
-                flex-direction: column;
+                justify-content: center;
+                width: 100%;
+                padding: 8px 0;
+                background: none;
+                border: none;
+                touch-action: none;
+                cursor: grab;
             }
-            
-            .table-responsive {
-                flex: 1;
-                min-height: 0;
-                height: var(--table-scroll-max-height, 100%);
+
+            .sheet-handle-bar {
+                width: 38px;
+                height: 5px;
+                border-radius: 3px;
+                background: #c7c7c7;
+            }
+
+            .sheet-handle:focus {
+                outline: none;
+            }
+
+            .sheet-handle:focus-visible {
+                outline: 2px solid #007FA3;
+                outline-offset: 2px;
+            }
+
+            /* Fixed height (the Full snap height) - position is driven
+               entirely by transform: translateY(), written directly onto
+               the element by bottom-sheet.js. Never animate height/top -
+               that forces layout every frame. */
+            .table-container {
+                position: fixed;
+                left: 8px;
+                right: 8px;
+                bottom: 0;
+                z-index: 50;
+                width: auto;
+                height: calc(100vh - 48px - env(safe-area-inset-top));
+                height: calc(100dvh - 48px - env(safe-area-inset-top));
+                margin: 0;
+                padding-bottom: max(12px, env(safe-area-inset-bottom));
+                border-radius: 16px 16px 0 0;
+                grid-template-rows: auto auto 1fr;
+                background: rgba(255, 255, 255, 0.78);
+                box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+                transform: translateY(0px);
+                transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+            }
+
+            @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+                .table-container {
+                    -webkit-backdrop-filter: blur(20px) saturate(180%);
+                    backdrop-filter: blur(20px) saturate(180%);
+                }
+            }
+
+            @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+                .table-container {
+                    background: #fff;
+                }
+            }
+
+            .table-container.sheet-dragging {
+                transition: none;
+                will-change: transform;
+            }
+
+            /* Below Full, the list is not a scroll container at all - any
+               vertical touch on it is unambiguously a sheet-drag (see
+               bottom-sheet.js). Only at Full does it become natively
+               scrollable. */
+            #tablePanel.sheet-state-collapsed .table-responsive,
+            #tablePanel.sheet-state-half .table-responsive {
+                overflow-y: hidden;
+                touch-action: none;
+            }
+
+            #tablePanel.sheet-state-full .table-responsive {
                 overflow-y: auto;
-                overflow-x: hidden;
-                max-height: var(--table-scroll-max-height, 100%);
+                touch-action: pan-y;
             }
-            
+
+            /* Higher-specificity override for a real, currently-live cascade
+               bug: Bootstrap 3.3.7's own @media(max-width:767px) rule sets
+               .table-responsive{overflow-y:hidden}, and because Bootstrap's
+               stylesheet <link> loads after this inline <style> block, its
+               rule wins the cascade tie over the plain .table-responsive
+               rule above despite equal specificity. This ID+class selector
+               wins regardless of load order. */
+            #tablePanel .table-responsive {
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                -webkit-overflow-scrolling: touch;
+                margin-bottom: 0;
+                border: 0;
+            }
+
+            .table-responsive {
+                /* min-height:0 is required here: .table-container is a CSS
+                   grid with grid-template-rows: auto auto 1fr, and grid
+                   items default to min-height:auto (their content's
+                   intrinsic size), which silently overrides the 1fr track
+                   and leaves nothing for overflow-y:auto to scroll. */
+                min-height: 0;
+                height: auto;
+                max-height: none;
+            }
+
 
             .header h1 {
                 font-size: 1.8rem;
@@ -1444,43 +1613,43 @@ body.map-fullscreen .table-responsive {
                 --controls-offset-right: 10px;
             }
 
-            body.map-fullscreen .map-container {
-                --controls-offset-top: 10px;
-                --controls-offset-right: 10px;
-            }
-
-
             .control-btn {
                 width: 40px;
                 height: 40px;
                 font-size: 16px;
             }
 
-            body.map-fullscreen .main-content {
-                padding: 0;
+            /* Pinch and double-tap already handle zoom on touch devices, and
+               the bottom sheet supersedes the old fullscreen table panel
+               (which was permanently translateY(100%) on mobile with
+               nothing that ever animated it back - dead code, removed
+               here). Only "Fit all" (the existing reset button, which
+               already runs the fly-to animation) stays, restyled as a
+               floating pill above the sheet. */
+            #zoomIn,
+            #zoomOut,
+            #toggleFullscreen {
+                display: none;
             }
 
-            body.map-fullscreen .map-container {
-                flex: 1;
-                height: auto;
-            }
-
-            body.map-fullscreen .table-container {
-                top: auto;
-                right: 0;
-                left: 0;
+            #resetView {
+                position: fixed;
+                right: 16px;
                 bottom: 0;
-                width: 100%;
-                height: min(60dvh, 520px);
-                max-width: none;
-                border-radius: 16px 16px 0 0;
-                transform: translateY(100%);
-                box-shadow: 0 -12px 28px rgba(0,0,0,0.18);
+                z-index: 3;
+                border-radius: 50%;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+                transform: translateY(-92px); /* resting offset above the Collapsed sheet; updated live by bottom-sheet.js */
+                transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 200ms ease;
             }
 
-            .map-container {
-                --controls-offset-top: 10px;
-                --controls-offset-right: 10px;
+            #resetView.sheet-dragging {
+                transition: none;
+            }
+
+            #resetView.fit-all-hidden {
+                opacity: 0;
+                pointer-events: none;
             }
 
         @media (max-width: 480px) {
@@ -1568,7 +1737,17 @@ body.map-fullscreen .table-responsive {
             </div>
         </div>
 
-        <div class="table-container" id="tablePanel">
+        <!-- Mobile-only: dims the map as the bottom sheet approaches Full
+             (see bottom-sheet.js). A sibling of .map-container, not a
+             child, and added to isInteractiveTarget()'s exclusion list in
+             script.js so map pan/pinch never starts on it. Hidden on
+             desktop by the same mobile media query that positions it. -->
+        <div id="sheetDimOverlay" aria-hidden="true"></div>
+
+        <div class="table-container" id="tablePanel" role="region" aria-label="Poster list">
+            <button type="button" class="sheet-handle" id="sheetHandle" aria-label="Expand poster list" aria-expanded="false">
+                <span class="sheet-handle-bar"></span>
+            </button>
             <div id="filter-form-container">
                 <div class="filter-controls">
                     <form class="search-form" role="search">
@@ -1601,6 +1780,7 @@ body.map-fullscreen .table-responsive {
     <!-- Bootstrap CSS -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
     <script src="assets/js/script.js"></script>
+    <script src="assets/js/bottom-sheet.js"></script>
     <script src="assets/js/layout-api.js"></script>
     <!-- jQuery -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
@@ -1921,6 +2101,14 @@ body.map-fullscreen .table-responsive {
             if (window.posterMap && typeof window.posterMap.hideInfo === 'function') {
                 window.posterMap.hideInfo();
             }
+
+            // Mobile only (bottom-sheet.js no-ops elsewhere): drop the sheet
+            // to Half so the marker this selection is about to pan/zoom to
+            // isn't left hidden under a Full sheet. Dispatched synchronously
+            // and before the camera call below, so by the time setView()
+            // runs, PosterSessionMap's viewport insets already reflect the
+            // Half sheet height.
+            document.dispatchEvent(new CustomEvent('poster-row-selected', { bubbles: true }));
 
             const highlightedMarker = highlightMarkerByEasel(easelBoard, { deferTooltip: true });
 
@@ -2377,8 +2565,26 @@ body.map-fullscreen .table-responsive {
             // computed from the button's live rect instead of CSS anchoring.
             const positionPopover = () => {
                 const btnRect = toggleBtn.getBoundingClientRect();
-                popover.style.top = (btnRect.bottom + 8) + 'px';
                 popover.style.right = (window.innerWidth - btnRect.right) + 'px';
+
+                // On mobile the button now lives in the sheet's search row
+                // near the bottom of the screen (see bottom-sheet.js's
+                // relocateInfoButton), not just the header, so "always open
+                // below" can push the popover off-screen. Measure its
+                // natural height (invisible, so there's no flash in the
+                // wrong spot) and flip to open above the button when there
+                // isn't enough room below.
+                popover.style.visibility = 'hidden';
+                popover.hidden = false;
+                const popoverHeight = popover.getBoundingClientRect().height;
+                popover.hidden = true;
+                popover.style.visibility = '';
+
+                const spaceBelow = window.innerHeight - btnRect.bottom - 8;
+                const opensAbove = spaceBelow < popoverHeight && btnRect.top - 8 >= popoverHeight;
+                popover.style.top = opensAbove
+                    ? (btnRect.top - popoverHeight - 8) + 'px'
+                    : (btnRect.bottom + 8) + 'px';
             };
 
             toggleBtn.addEventListener('click', function(e) {
@@ -2871,6 +3077,10 @@ body.map-fullscreen .table-responsive {
          position:sticky with its own z-index at mobile widths, which traps
          any descendant regardless of that descendant's own z-index. -->
     <div class="info-popover" id="infoPopover" role="dialog" aria-label="About this site" hidden>
+        <div class="info-popover-brand">
+            <img src="assets/HMC BGW RGB 150dpi.png" alt="HMC Logo">
+            <h2>HMC Poster Session <span>Fall 2026</span></h2>
+        </div>
         Built by Jon Ebueng (CIS) with the help of generative AI.
         <br><br>
         Questions or feedback? Email <a href="mailto:jebueng@hmc.edu">jebueng@hmc.edu</a>.
