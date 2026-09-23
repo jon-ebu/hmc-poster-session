@@ -57,6 +57,23 @@
             window.addEventListener('resize', () => this._onResize());
             window.addEventListener('orientationchange', () => this._onResize());
 
+            // Belt-and-suspenders for iOS Safari versions before 17.4 (no
+            // interactive-widget=resizes-content support, see index.html's
+            // viewport meta tag): focusing an input can still pan/scroll
+            // the page to "reveal" it even with body pinned via
+            // position:fixed. visualViewport fires resize/scroll for
+            // exactly this, regardless of which mechanism caused it -
+            // snapping back to (0,0) undoes it immediately.
+            if (window.visualViewport) {
+                const resetPageScroll = () => {
+                    if (this.mobileQuery.matches && (window.scrollX !== 0 || window.scrollY !== 0)) {
+                        window.scrollTo(0, 0);
+                    }
+                };
+                window.visualViewport.addEventListener('resize', resetPageScroll);
+                window.visualViewport.addEventListener('scroll', resetPageScroll);
+            }
+
             if (this.mobileQuery.matches) {
                 this._recomputeOffsets();
                 this._goTo('collapsed', { animate: false });
@@ -148,10 +165,14 @@
             });
 
             // Focusing the search field expands to Full so the on-screen
-            // keyboard doesn't fight a half-open sheet.
+            // keyboard doesn't fight a half-open sheet. Instant, not
+            // animated: an in-flight 300ms transition leaves the search
+            // row's geometry stale right when iOS Safari's own "scroll the
+            // focused input into view" heuristic runs (essentially
+            // synchronously on focus), which can compound with it.
             document.addEventListener('poster-search-focused', () => {
                 if (this.mobileQuery.matches) {
-                    this._goTo('full');
+                    this._goTo('full', { animate: false });
                 }
             });
 
