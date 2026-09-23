@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
     <title>2026 Poster Session - Interactive Map</title>
     <link rel="icon" type="image/png" href="assets/HMC%20BGW%20RGB%20150dpi.png">
     <style>
@@ -1143,15 +1143,47 @@ body.map-fullscreen .table-responsive {
                 position: fixed;
                 inset: 0;
                 width: 100%;
+                --mobile-header-h: 40px;
             }
 
-            /* Full-screen bottom-sheet layout: the header is removed
-               entirely (not just visually) so the map runs edge to edge,
-               including behind the status bar. Branding moves into
-               #infoPopover (see .info-popover-brand) and the info button
-               moves into the sheet's search row (see bottom-sheet.js). */
+            /* Compact, always-visible header bar - narrower than desktop's,
+               with the subheading inline instead of stacked, so it stays
+               small. Fixed above the map and sheet (z-index higher than
+               both) rather than a flow element, since .main-content's
+               children size themselves against the viewport, not against
+               .header's box. The info button stays relocated into the
+               sheet's search row (see bottom-sheet.js) rather than
+               reappearing here, to keep this bar as narrow as possible. */
             .header {
-                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 60;
+                padding: 6px 12px;
+                padding-top: calc(6px + env(safe-area-inset-top));
+                box-sizing: border-box;
+                height: calc(var(--mobile-header-h) + env(safe-area-inset-top));
+            }
+
+            .header-content {
+                gap: 8px;
+            }
+
+            .header-logo {
+                height: 22px;
+            }
+
+            .header h1 {
+                font-size: 0.95rem;
+                line-height: 1.2;
+            }
+
+            .header h1 .subheading {
+                display: inline;
+                font-size: 0.8rem;
+                font-weight: 500;
+                margin-left: 4px;
             }
 
             .info-popover-brand {
@@ -1258,7 +1290,10 @@ body.map-fullscreen .table-responsive {
 
             .map-container {
                 position: fixed;
-                inset: 0;
+                top: calc(var(--mobile-header-h) + env(safe-area-inset-top));
+                right: 0;
+                bottom: 0;
+                left: 0;
                 border-radius: 0;
                 z-index: 1;
                 margin: 0;
@@ -1325,8 +1360,12 @@ body.map-fullscreen .table-responsive {
                 bottom: 0;
                 z-index: 50;
                 width: auto;
-                height: calc(100vh - 48px - env(safe-area-inset-top));
-                height: calc(100dvh - 48px - env(safe-area-inset-top));
+                /* Full snap height: from just below the header (with a
+                   small gap revealing a sliver of map) down to the bottom -
+                   the header itself is the persistent chrome now, so this
+                   no longer needs its own separate top gap on top of that. */
+                height: calc(100vh - var(--mobile-header-h) - env(safe-area-inset-top) - 8px);
+                height: calc(100dvh - var(--mobile-header-h) - env(safe-area-inset-top) - 8px);
                 margin: 0;
                 padding-bottom: max(12px, env(safe-area-inset-bottom));
                 border-radius: 16px 16px 0 0;
