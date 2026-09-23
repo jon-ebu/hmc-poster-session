@@ -997,18 +997,7 @@ let isPanning = false;
         const fit = this.computeContentFitZoomAndPan(paddingRatio);
         if (!fit) return false;
 
-        let targetZoom = Math.min(this.maxZoom, Math.max(this.minZoom, fit.zoom));
-
-        // The mobile map panel is short and wide (40vh, full width) while the
-        // content is tall and narrow, so a pure content-fit zoom still looks
-        // small against all the letterboxed empty space on either side.
-        // Force a closer starting zoom on narrow viewports; the user can still
-        // zoom/pan out from there.
-        const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 768;
-        if (isMobileViewport) {
-            const mobileZoomFloor = 2.5;
-            targetZoom = Math.min(this.maxZoom, Math.max(targetZoom, mobileZoomFloor));
-        }
+        const targetZoom = Math.min(this.maxZoom, Math.max(this.minZoom, fit.zoom));
 
         this.currentZoom = targetZoom;
         const target = this.calculatePanForCoordinates(fit.centerX, fit.centerY);

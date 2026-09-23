@@ -1552,11 +1552,6 @@ body.map-fullscreen .table-responsive {
                     </svg>
                 </button>
             </div>
-
-            <div class="info-panel" id="infoPanel">
-                <div class="info-title" id="infoTitle">Select a poster area</div>
-                <div class="info-description" id="infoDescription">Hover over any poster area to view details</div>
-            </div>
         </div>
 
         <!-- Mobile-only: dims the map as the bottom sheet approaches Full
@@ -2776,10 +2771,19 @@ body.map-fullscreen .table-responsive {
         });
     </script>
 
-    <!-- Rendered as a sibling of everything else, not nested inside the
-         header: .header is position:sticky with its own z-index at mobile
-         widths, which traps any descendant regardless of that descendant's
-         own z-index. -->
+    <!-- Rendered as a sibling of everything else, not nested inside
+         .map-container: on mobile .map-container is position:fixed with
+         its own (low) z-index, which traps any descendant's z-index
+         regardless of how high it's set - this panel's z-index:100000 was
+         being capped there and rendering underneath the bottom sheet. -->
+    <div class="info-panel" id="infoPanel">
+        <div class="info-title" id="infoTitle">Select a poster area</div>
+        <div class="info-description" id="infoDescription">Hover over any poster area to view details</div>
+    </div>
+
+    <!-- Same reasoning as above: .header is position:sticky with its own
+         z-index at mobile widths, which traps any descendant regardless of
+         that descendant's own z-index. -->
     <div class="info-popover" id="infoPopover" role="dialog" aria-label="About this site" hidden>
         <div class="info-popover-brand">
             <img src="assets/HMC BGW RGB 150dpi.png" alt="HMC Logo">
