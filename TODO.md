@@ -17,6 +17,8 @@
 [X] Click within map to hide info pane/unselect row
 [X] Restrict Zoom on scroll and - button to whatever the default zoom is
 [X] Make panning feel less stiff
+[X] Touchscreen input rework Phase 1 (core physics), per the "Map Touchscreen Input Behavior" PRD, Tight preset: exact 1:1 pan tracking (removed the >1:1 multipliers "less stiff" above had added), touch/pinch slop-gated gesture recognition, pan bounds, momentum with a proper fling threshold/cap/decay, zoom-limit rubber-banding, two-finger-tap-to-zoom-out
+[] Touchscreen input rework, deferred: long-press, double-tap-drag continuous zoom, 44px marker hit-target rework, palm/edge rejection
 [] Show a "Zoom in!" window on load with a little pinching animation
 [X] Change map controls to be brand colors
 
