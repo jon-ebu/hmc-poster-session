@@ -2428,6 +2428,15 @@ body.map-fullscreen .table-responsive {
                     searchInput.focus();
                 });
             }
+
+            // The map's own reset/"Fit all" button (#resetView, blue on
+            // mobile) already resets the camera (see script.js) - also
+            // clear search + category filters there so it returns the
+            // whole app to its default state in one tap, not just the view.
+            const resetViewButton = document.getElementById('resetView');
+            if (resetViewButton) {
+                resetViewButton.addEventListener('click', resetAllFilters);
+            }
         }
 
         function cancelPendingAutoHighlight() {
@@ -2524,6 +2533,15 @@ body.map-fullscreen .table-responsive {
                 searchInput.value = '';
                 searchInput.dispatchEvent(new Event('input'));
             }
+        }
+
+        // Returns search AND category filters to their default (empty) state -
+        // used by the map's own reset/"Fit all" button so one tap undoes
+        // everything, not just the camera position.
+        function resetAllFilters() {
+            selectedCategories.clear();
+            updateCategoryFilterUI();
+            resetSearch();
         }
 
         function loadTableData() {
