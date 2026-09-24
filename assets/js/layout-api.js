@@ -6,6 +6,106 @@ function departmentLabel(category) {
     return count > 1 ? 'Departments' : 'Department';
 }
 
+// Shared easel marker renderer (Easel Label Fit & Map/Table Parity PRD,
+// revised approach): the table badge is now literally the map marker's own
+// circle+text, scaled down via SVG viewBox - not an independent fit. One
+// function builds that circle+text pair; the map's own marker-creation code
+// (createLoneMarkerElement, createPosterMountElement below) calls it to
+// build its live, interactive markers, and the table wraps its output in a
+// small fixed-size <svg> for a pixel-identical (just smaller) copy. This
+// replaces the previous fix's separate canvas-measurement-based fitting -
+// deleted in favor of exact parity by construction: since both views render
+// the same numbers in the same local coordinate space, whatever fits on the
+// map fits in the table too, with no separate logic to keep in sync.
+
+// Scale font size based on text length to fit in a 14px-radius circle -
+// unchanged from before this PRD; still just this one function, now shared
+// instead of duplicated across map/table/tooltip call sites.
+function calculateEaselFontSize(text) {
+    if (!text) return '8';
+    const textLength = text.length;
+    if (textLength <= 2) return '9';
+    if (textLength <= 4) return '7';
+    if (textLength <= 6) return '6';
+    return '5';
+}
+
+const EASEL_MARKER_RADIUS = 14;
+const EASEL_MARKER_STROKE_WIDTH = 2;
+const EASEL_MARKER_FONT_FAMILY = 'Arial, sans-serif';
+
+/**
+ * Builds the marker's circle + text as real DOM elements (not a markup
+ * string) so the map's own marker-creation code can still attach live
+ * interactivity (hover-scale, click/touch/focus handlers, data-* attributes)
+ * to them exactly as before - only the geometry/text creation itself moved
+ * here. The table calls this too, for a static (non-interactive) copy.
+ */
+function createEaselMarkerElements(easelId, bgColor, textColor) {
+    const text = String(easelId || '');
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', 0);
+    circle.setAttribute('cy', 0);
+    circle.setAttribute('r', EASEL_MARKER_RADIUS);
+    circle.setAttribute('fill', bgColor || '#404040');
+    circle.setAttribute('stroke', 'white');
+    circle.setAttribute('stroke-width', EASEL_MARKER_STROKE_WIDTH);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', 0);
+    label.setAttribute('y', 1); // slight vertical offset for better centering
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('dominant-baseline', 'central');
+    label.setAttribute('font-family', EASEL_MARKER_FONT_FAMILY);
+    const fontSize = calculateEaselFontSize(text);
+    label.setAttribute('font-size', fontSize);
+    label.setAttribute('font-weight', 'bold');
+    label.setAttribute('fill', textColor || 'white');
+    label.textContent = text;
+
+    return { circle, text: label, fontSize };
+}
+
+/**
+ * The table's copy: the exact same circle+text as the map marker (resting,
+ * not hover-expanded, state), wrapped in a small fixed-size <svg> so the
+ * browser scales everything - geometry and font-size alike, since they're
+ * just numbers in the same local coordinate space - uniformly down to
+ * sizePx. No CSS restyling; the viewBox does all the sizing.
+ */
+function renderEaselBadgeHTML(easelId, options = {}) {
+    const {
+        bgColor = '#404040',
+        textColor = 'white',
+        ariaLabel = easelId,
+        sizePx = 40,
+        spanClass = 'easel-pill'
+    } = options;
+    const { circle, text } = createEaselMarkerElements(easelId, bgColor, textColor);
+
+    const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    wrapper.setAttribute('class', 'easel-pill__svg');
+    // -16..16: snugly bounds the r=14 circle plus its stroke-width=2 ring.
+    wrapper.setAttribute('viewBox', '-16 -16 32 32');
+    wrapper.setAttribute('width', String(sizePx));
+    wrapper.setAttribute('height', String(sizePx));
+    wrapper.setAttribute('role', 'presentation');
+    wrapper.setAttribute('focusable', 'false');
+    wrapper.appendChild(circle);
+    wrapper.appendChild(text);
+
+    const span = document.createElement('span');
+    span.className = spanClass;
+    span.setAttribute('role', 'img');
+    span.setAttribute('aria-label', ariaLabel == null ? '' : String(ariaLabel));
+    span.style.width = `${sizePx}px`;
+    span.style.height = `${sizePx}px`;
+    span.appendChild(wrapper);
+
+    return span.outerHTML;
+}
+
 class LayoutAPI {
     constructor(mapInstance) {
         this.map = mapInstance;
@@ -22,28 +122,6 @@ class LayoutAPI {
 
     isLoneMarkerBoard(easelBoard) {
         return easelBoard ? this.loneMarkerBoards.has(easelBoard) : false;
-    }
-
-    /**
-     * Calculate appropriate font size based on text length to prevent overflow
-     * @param {string} text - The text to size
-     * @returns {string} Font size in px
-     */
-    calculateFontSize(text) {
-        if (!text) return '8';
-        
-        const textLength = text.length;
-        
-        // Scale font size based on text length to fit in 14px radius circle
-        if (textLength <= 2) {
-            return '9';  // Default size for short text like "B1", "C5"
-        } else if (textLength <= 4) {
-            return '7';  // Smaller for medium text like "CS-1", "BCS1"
-        } else if (textLength <= 6) {
-            return '6';  // Even smaller for longer text like "CSEM-1"
-        } else {
-            return '5';  // Smallest for very long text
-        }
     }
 
     /**
@@ -537,14 +615,12 @@ class LayoutAPI {
         board.setAttribute('pointer-events', 'none');
         group.appendChild(board);
 
-        // Create the marker circle
-        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        marker.setAttribute('cx', 0);
-        marker.setAttribute('cy', 0);
-        marker.setAttribute('r', 14);
-        marker.setAttribute('fill', config.poster.color || '#404040');
-        marker.setAttribute('stroke', 'white');
-        marker.setAttribute('stroke-width', 2);
+        // Create the marker circle + label (shared with the table's badge -
+        // see createEaselMarkerElements)
+        const easelBoard = config.poster.easelBoard || '';
+        const backgroundColor = config.poster.color || '#404040';
+        const textColor = this.getTextColorForBackground(backgroundColor);
+        const { circle: marker, text: markerText, fontSize } = createEaselMarkerElements(easelBoard, backgroundColor, textColor);
         marker.style.cursor = 'pointer';
         marker.style.transition = 'r 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease-out';
         marker.setAttribute('tabindex', '0');
@@ -553,30 +629,10 @@ class LayoutAPI {
         marker.setAttribute('data-easel', config.poster?.easelBoard || '');
         marker.classList.add('color-marker');
 
-        // Add text for the marker showing easel ID with dynamic sizing
-        const markerText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        markerText.setAttribute('x', 0);
-        markerText.setAttribute('y', 1); // Slight vertical offset for better centering
-        markerText.setAttribute('text-anchor', 'middle');
-        markerText.setAttribute('dominant-baseline', 'central');
-        markerText.setAttribute('font-family', 'Arial, sans-serif');
-        
-        // Dynamic font sizing based on text length
-        const easelBoard = config.poster.easelBoard || '';
-        const fontSize = this.calculateFontSize(easelBoard);
-        markerText.setAttribute('font-size', fontSize);
-        
         // Store original font size for hover effect
         markerText.setAttribute('data-original-font-size', fontSize);
-        
-        markerText.setAttribute('font-weight', 'bold');
-        // Use dynamic text color based on background color for better contrast
-        const backgroundColor = config.poster.color || '#404040';
-        const textColor = this.getTextColorForBackground(backgroundColor);
-        markerText.setAttribute('fill', textColor);
         markerText.setAttribute('pointer-events', 'none'); // Make text non-interactive to prevent hover conflicts
         markerText.style.transition = 'font-size 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
-        markerText.textContent = easelBoard;
 
         // Add invisible touch area for easier mobile interaction
         const touchArea = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -673,14 +729,9 @@ class LayoutAPI {
                     const title = config.poster.title || 'Poster Information';
                     const bgColor = config.poster.color || '#404040';
                     const textColor = window.layout?.getTextColorForBackground?.(bgColor) || 'white';
-                    const fontSize = easel.length <= 2 ? 13 : easel.length <= 4 ? 11 : easel.length <= 6 ? 10 : 9;
+                    const badgeHtml = renderEaselBadgeHTML(easel, { bgColor, textColor, ariaLabel: `Easel ${easel}`, sizePx: 32 });
                     window.posterMap.infoTitle.innerHTML = `
-                        <span class="easel-pill" data-easel="${easel}">
-                            <svg class="easel-pill__svg" viewBox="0 0 36 36" role="presentation">
-                                <circle cx="18" cy="18" r="16" fill="${bgColor}" stroke="white" stroke-width="2"></circle>
-                                <text x="18" y="18" fill="${textColor}" font-size="${fontSize}" dominant-baseline="middle" text-anchor="middle">${easel}</text>
-                            </svg>
-                        </span>
+                        ${badgeHtml}
                         <span class="title-text">${title}</span>
                     `;
                     window.posterMap.infoDescription.innerHTML = `
@@ -825,14 +876,13 @@ class LayoutAPI {
         mount.setAttribute('stroke-width', config.style?.strokeWidth || 1);
 
         // Create side A indicator (left or top side) - Mobile-friendly touch target
-        const sideAIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         const offsetA = isVertical ? { x: -width/1.5, y: -height/2.8 } : { x: -width/3, y: -height/2.5 };
+        const sideAEaselBoard = config.sideA.easelBoard || '';
+        const sideABackgroundColor = config.sideA.color || '#404040';
+        const sideATextColor = this.getTextColorForBackground(sideABackgroundColor);
+        const { circle: sideAIndicator, text: sideAText, fontSize: sideAFontSize } = createEaselMarkerElements(sideAEaselBoard, sideABackgroundColor, sideATextColor);
         sideAIndicator.setAttribute('cx', offsetA.x);
         sideAIndicator.setAttribute('cy', offsetA.y);
-        sideAIndicator.setAttribute('r', 14); // Same size for all mounts
-        sideAIndicator.setAttribute('fill', config.sideA.color || '#404040');
-        sideAIndicator.setAttribute('stroke', 'white');
-        sideAIndicator.setAttribute('stroke-width', 2);
         sideAIndicator.style.cursor = 'pointer';
         sideAIndicator.style.transition = 'r 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease-out';
         sideAIndicator.setAttribute('data-side', 'A');
@@ -841,33 +891,15 @@ class LayoutAPI {
         sideAIndicator.setAttribute('role', 'button');
         sideAIndicator.setAttribute('aria-label', `Poster A: ${config.sideA.title}`);
         sideAIndicator.classList.add('color-marker');
-        
-        // Add text for side A showing easel ID with dynamic sizing
-        const sideAText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+
         sideAText.setAttribute('x', offsetA.x);
         sideAText.setAttribute('y', offsetA.y + 1); // Slight vertical offset for better centering
-        sideAText.setAttribute('text-anchor', 'middle');
-        sideAText.setAttribute('dominant-baseline', 'central');
-        sideAText.setAttribute('font-family', 'Arial, sans-serif');
         sideAText.setAttribute('data-side', 'A');
-        
-        // Dynamic font sizing based on text length
-        const sideAEaselBoard = config.sideA.easelBoard || '';
-        const sideAFontSize = this.calculateFontSize(sideAEaselBoard);
-        sideAText.setAttribute('font-size', sideAFontSize);
-        
         // Store original font size for hover effect
         sideAText.setAttribute('data-original-font-size', sideAFontSize);
-        
-        sideAText.setAttribute('font-weight', 'bold');
-        // Use dynamic text color based on background color for better contrast
-        const sideABackgroundColor = config.sideA.color || '#404040';
-        const sideATextColor = this.getTextColorForBackground(sideABackgroundColor);
-        sideAText.setAttribute('fill', sideATextColor);
         sideAText.setAttribute('pointer-events', 'none'); // Make text non-interactive to prevent hover conflicts
         sideAText.style.transition = 'font-size 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
-        sideAText.textContent = sideAEaselBoard;
-        
+
         // Add invisible touch area for easier mobile interaction
         const sideATouchArea = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         sideATouchArea.setAttribute('cx', offsetA.x);
@@ -878,14 +910,13 @@ class LayoutAPI {
         sideATouchArea.setAttribute('data-side', 'A');
 
         // Create side B indicator (right or bottom side) - Mobile-friendly touch target
-        const sideBIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         const offsetB = isVertical ? { x: width/1.5, y: height/2.8 } : { x: width/3, y: height/2.5 };
+        const sideBEaselBoard = config.sideB.easelBoard || '';
+        const sideBBackgroundColor = config.sideB.color || '#404040';
+        const sideBTextColor = this.getTextColorForBackground(sideBBackgroundColor);
+        const { circle: sideBIndicator, text: sideBText, fontSize: sideBFontSize } = createEaselMarkerElements(sideBEaselBoard, sideBBackgroundColor, sideBTextColor);
         sideBIndicator.setAttribute('cx', offsetB.x);
         sideBIndicator.setAttribute('cy', offsetB.y);
-        sideBIndicator.setAttribute('r', 14); // Same size for all mounts
-        sideBIndicator.setAttribute('fill', config.sideB.color || '#404040');
-        sideBIndicator.setAttribute('stroke', 'white');
-        sideBIndicator.setAttribute('stroke-width', 2);
         sideBIndicator.style.cursor = 'pointer';
         sideBIndicator.style.transition = 'r 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease-out';
         sideBIndicator.setAttribute('data-side', 'B');
@@ -894,32 +925,14 @@ class LayoutAPI {
         sideBIndicator.setAttribute('role', 'button');
         sideBIndicator.setAttribute('aria-label', `Poster B: ${config.sideB.title}`);
         sideBIndicator.classList.add('color-marker');
-        
-        // Add text for side B showing easel ID with dynamic sizing
-        const sideBText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+
         sideBText.setAttribute('x', offsetB.x);
         sideBText.setAttribute('y', offsetB.y + 1); // Slight vertical offset for better centering
-        sideBText.setAttribute('text-anchor', 'middle');
-        sideBText.setAttribute('dominant-baseline', 'central');
-        sideBText.setAttribute('font-family', 'Arial, sans-serif');
         sideBText.setAttribute('data-side', 'B');
-        
-        // Dynamic font sizing based on text length
-        const sideBEaselBoard = config.sideB.easelBoard || '';
-        const sideBFontSize = this.calculateFontSize(sideBEaselBoard);
-        sideBText.setAttribute('font-size', sideBFontSize);
-        
         // Store original font size for hover effect
         sideBText.setAttribute('data-original-font-size', sideBFontSize);
-        
-        sideBText.setAttribute('font-weight', 'bold');
-        // Use dynamic text color based on background color for better contrast
-        const sideBBackgroundColor = config.sideB.color || '#404040';
-        const sideBTextColor = this.getTextColorForBackground(sideBBackgroundColor);
-        sideBText.setAttribute('fill', sideBTextColor);
         sideBText.setAttribute('pointer-events', 'none'); // Make text non-interactive to prevent hover conflicts
         sideBText.style.transition = 'font-size 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)';
-        sideBText.textContent = sideBEaselBoard;
         
         // Add invisible touch area for easier mobile interaction
         const sideBTouchArea = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -1069,14 +1082,9 @@ class LayoutAPI {
                     const title = poster.title || 'Poster Information';
                     const bgColor = poster.color || '#404040';
                     const textColor = window.layout?.getTextColorForBackground?.(bgColor) || 'white';
-                    const fontSize = easel.length <= 2 ? 12 : easel.length <= 4 ? 10 : easel.length <= 6 ? 9 : 8;
+                    const badgeHtml = renderEaselBadgeHTML(easel, { bgColor, textColor, ariaLabel: `Easel ${easel}`, sizePx: 32 });
                     window.posterMap.infoTitle.innerHTML = `
-                        <span class="easel-pill" data-easel="${easel}">
-                            <svg class="easel-pill__svg" viewBox="0 0 36 36" role="presentation">
-                                <circle cx="18" cy="18" r="16" fill="${bgColor}" stroke="white" stroke-width="2"></circle>
-                                <text x="18" y="18" fill="${textColor}" font-size="${fontSize}" dominant-baseline="middle" text-anchor="middle">${easel}</text>
-                            </svg>
-                        </span>
+                        ${badgeHtml}
                         <span class="title-text">${title}</span>
                     `;
                     window.posterMap.infoDescription.innerHTML = `

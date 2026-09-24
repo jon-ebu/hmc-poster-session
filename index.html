@@ -389,39 +389,16 @@
             line-height: 1.2;
         }
 
+        /* Layout only - the badge's own SVG (built by renderEaselBadgeHTML,
+           assets/js/layout-api.js) carries its own width/height/viewBox and
+           the map-marker-matching circle/text attributes; nothing here
+           restyles them. */
         .easel-pill {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 44px;
-            height: 44px;
             border-radius: 50%;
             flex-shrink: 0;
-        }
-
-        /* PRD badge spec (32px) - scoped to the tooltip title so the table's
-           own .easel-pill--table (40px) is unaffected. */
-        .info-title .easel-pill {
-            width: 32px;
-            height: 32px;
-        }
-
-        .easel-pill__svg {
-            width: 100%;
-            height: 100%;
-        }
-
-        .easel-pill__svg text {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            font-weight: 700;
-            dominant-baseline: middle;
-            text-anchor: middle;
-            pointer-events: none;
-        }
-
-        .easel-pill--table {
-            width: 40px;
-            height: 40px;
         }
 
         .info-description {
@@ -1717,8 +1694,12 @@ body.map-fullscreen .table-responsive {
         }
 
         function createColorIcon(color, category, easelId) {
-            // Matches the map marker/tooltip pill style: the easel ID sits
-            // inside the colored circle rather than as a separate dot+text.
+            // The table badge is the exact map marker (circle + text),
+            // scaled down via SVG viewBox - see createEaselMarkerElements/
+            // renderEaselBadgeHTML in assets/js/layout-api.js. Whatever fits
+            // on the map fits here too, since it's the same numbers in the
+            // same local coordinate space, just rendered smaller.
+            //
             // The color still doubles as category shorthand - on mobile the
             // "Poster Category" text column is hidden to save space, so
             // color would otherwise be the ONLY way that info is conveyed
@@ -1729,18 +1710,16 @@ body.map-fullscreen .table-responsive {
                 ? window.layout.getTextColorForBackground(bgColor)
                 : 'white';
             const text = (easelId || '').toString();
-            const fontSize = text.length <= 2 ? 13 : text.length <= 4 ? 11 : text.length <= 6 ? 10 : 9;
             const label = category
                 ? `${text ? text + ', ' : ''}${category} ${departmentWord(category)}`
                 : (text || 'Department color indicator');
-            const safeLabel = escapeAttr(label);
-            const safeText = escapeAttr(text);
-            return `<span class="easel-pill easel-pill--table" role="img" aria-label="${safeLabel}">
-                        <svg class="easel-pill__svg" viewBox="0 0 36 36" role="presentation" focusable="false">
-                            <circle cx="18" cy="18" r="16" fill="${bgColor}" stroke="white" stroke-width="2"></circle>
-                            <text x="18" y="18" fill="${textColor}" font-size="${fontSize}" dominant-baseline="middle" text-anchor="middle">${safeText}</text>
-                        </svg>
-                    </span>`;
+            return renderEaselBadgeHTML(text, {
+                bgColor,
+                textColor,
+                ariaLabel: label,
+                sizePx: 40,
+                spanClass: 'easel-pill easel-pill--table'
+            });
         }
 
         // Global variables for marker management
