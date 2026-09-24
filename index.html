@@ -1213,17 +1213,22 @@ body.map-fullscreen .table-responsive {
                 position: fixed;
                 inset: 0;
                 width: 100%;
-                --mobile-header-h: 40px;
+                --mobile-header-h: 52px;
             }
 
-            /* Compact, always-visible header bar - narrower than desktop's,
-               with the subheading inline instead of stacked, so it stays
-               small. Fixed above the map and sheet (z-index higher than
-               both) rather than a flow element, since .main-content's
-               children size themselves against the viewport, not against
-               .header's box. The info button stays relocated into the
-               sheet's search row (see bottom-sheet.js) rather than
-               reappearing here, to keep this bar as narrow as possible. */
+            /* Compact, always-visible header bar - a status strip above the
+               map (the map is the product), not a shrunk copy of desktop's.
+               The subheading stacks under the title instead of competing
+               for width beside it, and the title scales fluidly with
+               clamp() so it never wraps - stacking the subheading needs a
+               touch more height than the old inline layout, hence 52px
+               (--mobile-header-h above) rather than 40px. Fixed above the
+               map and sheet (z-index higher than both) rather than a flow
+               element, since .main-content's children size themselves
+               against the viewport, not against .header's box. The info
+               button stays relocated into the sheet's search row (see
+               bottom-sheet.js) rather than reappearing here, to keep this
+               bar as narrow as possible. */
             .header {
                 position: fixed;
                 top: 0;
@@ -1234,26 +1239,46 @@ body.map-fullscreen .table-responsive {
                 padding-top: calc(6px + env(safe-area-inset-top));
                 box-sizing: border-box;
                 height: calc(var(--mobile-header-h) + env(safe-area-inset-top));
+                /* Flatter than desktop's diagonal gradient - on a strip this
+                   short, a subtle shine reads noisier than clean, and flat
+                   gold sits better behind black text. */
+                background: linear-gradient(180deg, #fdba1f 0%, #f0ad16 100%);
             }
 
             .header-content {
                 gap: 8px;
+                align-items: center;
             }
 
             .header-logo {
-                height: 22px;
+                /* Matches the full height of the stacked title + subheading
+                   text block beside it, not just the title line - a shorter
+                   logo reads as a stray icon next to two lines of text. */
+                height: 44px;
             }
 
             .header h1 {
-                font-size: 0.95rem;
+                /* Fluid instead of a fixed size, so it never wraps across
+                   the phone-width range - min/max chosen so even the
+                   narrowest common width (320px) has comfortable margin. */
+                font-size: clamp(20px, 6vw, 26px);
                 line-height: 1.2;
+                white-space: nowrap;
             }
 
             .header h1 .subheading {
-                display: inline;
-                font-size: 0.8rem;
-                font-weight: 500;
-                margin-left: 4px;
+                display: block;
+                /* 14px is the floor for outdoor/mobile legibility - below
+                   that it's unreadable in direct sunlight. Weight/letter-
+                   spacing compensate for the reduced opacity so it stays
+                   legible against the gold header while still reading as
+                   secondary to the title. */
+                font-size: 14px;
+                font-weight: 600;
+                opacity: 0.85;
+                letter-spacing: 0.02em;
+                margin-left: 0;
+                line-height: 1.3;
             }
 
             /* #infoButtonToggle is relocated here at runtime (see
@@ -1576,7 +1601,7 @@ body.map-fullscreen .table-responsive {
             <a href="https://www.hmc.edu/" target="_blank" rel="noopener noreferrer">
                 <img src="assets/HMC BGW RGB 150dpi.png" alt="HMC Logo" class="header-logo">
             </a>
-            <h1>HMC Poster Session <span class="subheading">Fall 2026</span></h1>
+            <h1>Poster Session Map <span class="subheading">Fall 2026</span></h1>
         </div>
         <button type="button" id="infoButtonToggle" class="info-button" aria-haspopup="true" aria-expanded="false" aria-controls="infoPopover" aria-label="About this site">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
