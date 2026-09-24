@@ -28,6 +28,7 @@
 [] Increase length of tooltip arrow and have it look good (don't look disjointed, look like it's organically coming from tooltip bubble)
 [X] Update Easel Board in Tooltip to be in a colored pill like how the markers are 
 [ ] Something is wrong with extracting Category from TSV. The header is "Poster Category" in the TSV. is missing in info pane tooltip. Shows N/A instead.
+[X] Tooltip containment, per the "Poster Map Tooltip Containment" PRD: safe-area-aware placement (never below the marker, never over the sheet/header/recenter button), text scale-down steps, auto-pan/scroll fallbacks, live re-placement during pan/pinch/sheet-drag, and dialog accessibility (role, focus, Escape/close button)
 # Markers
 [X] When marker is focused on, fade the marker it shares the mount with
 [X] Fix bug when marker is focused on it stays in an increased size when unfocused/unselected. It should return to normal size after some point.

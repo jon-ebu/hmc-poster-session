@@ -46,6 +46,12 @@ const EASE_WHEEL_STEP = cubicBezier(0, 0, 0.2, 1);
 const ZOOM_RUBBER_BAND_FRACTION = 0.05; // max overscale past a zoom limit
 const ZOOM_RUBBER_BAND_RESISTANCE = 0.35; // damping applied to movement past the limit
 
+// Poster Map Tooltip Containment PRD: used by _placeTooltip()'s fit-check
+// against the "Fit all" FAB exclusion zone.
+function rectsIntersect(a, b) {
+    return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 class PosterSessionMap {
     constructor() {
         this.svg = document.getElementById('posterMap');
@@ -56,11 +62,27 @@ class PosterSessionMap {
         this.infoDescription = document.getElementById('infoDescription');
         this.fullscreenBtn = document.getElementById('toggleFullscreen');
         this.tablePanel = document.getElementById('tablePanel');
+        // "Fit all" FAB - an exclusion zone for tooltip placement (Poster Map
+        // Tooltip Containment PRD): the tooltip may never cover it.
+        this.resetViewBtn = document.getElementById('resetView');
+        this.mapContainer = this.svg ? this.svg.closest('.map-container') : null;
         this.fullscreenEnterIcon = this.fullscreenBtn ? this.fullscreenBtn.querySelector('.fullscreen-enter') : null;
         this.fullscreenExitIcon = this.fullscreenBtn ? this.fullscreenBtn.querySelector('.fullscreen-exit') : null;
         this.isFullScreen = document.body.classList.contains('map-fullscreen');
+        // Tooltip containment/placement state (Poster Map Tooltip Containment
+        // PRD) - see showMarkerTooltip()/_placeTooltip() below.
+        this._tooltipMarkerEl = null;
+        this._tooltipEasel = null;
+        this._tooltipRafId = null;
+        this._tooltipTrackingActive = false;
         this.handleGlobalKeydown = (event) => {
             if (event.key !== 'Escape') {
+                return;
+            }
+
+            if (this.infoPanel && this.infoPanel.classList.contains('active')) {
+                event.preventDefault();
+                this.hideInfo();
                 return;
             }
 
@@ -1031,11 +1053,258 @@ class PosterSessionMap {
             window.posterInfoTimer = null;
         }
         this.infoPanel.classList.remove('active');
+        this._stopTooltipTracking();
+        this._tooltipMarkerEl = null;
+        this._tooltipEasel = null;
+        this.infoPanel.classList.remove('tt-step1', 'tt-step2', 'tt-step3', 'tt-scroll');
         if (this.selectedArea) {
             document.querySelectorAll('.poster-area').forEach(area => {
                 area.classList.remove('selected');
             });
             this.selectedArea = null;
+        }
+    }
+
+    /**
+     * Poster Map Tooltip Containment PRD: the tooltip's "safe area" is the
+     * map's own visible rect, clipped on the bottom by the live top edge of
+     * the mobile bottom sheet (desktop's #tablePanel is a flex sibling that
+     * never overlaps the map vertically, so it never clips there). Both
+     * rects are read live via getBoundingClientRect() - the sheet's
+     * transform is written synchronously every rAF frame during a drag
+     * (bottom-sheet.js), so this reflects the sheet's true position even
+     * mid-gesture, with no extra event wiring needed. A 12px margin is
+     * applied inward on every edge; left/right also respect
+     * env(safe-area-inset-left/right) via two tiny :root custom properties
+     * that exist purely so JS can read the resolved env() pixel value.
+     */
+    getTooltipSafeAreaRect() {
+        const MARGIN = 12;
+        const container = this.mapContainer || this.svg;
+        const mapRect = container.getBoundingClientRect();
+
+        let bottom = mapRect.bottom;
+        if (window.matchMedia('(max-width: 768px)').matches && this.tablePanel) {
+            const sheetTop = this.tablePanel.getBoundingClientRect().top;
+            if (sheetTop < bottom) {
+                bottom = sheetTop;
+            }
+        }
+
+        const rootStyle = getComputedStyle(document.documentElement);
+        const insetLeft = parseFloat(rootStyle.getPropertyValue('--safe-l')) || 0;
+        const insetRight = parseFloat(rootStyle.getPropertyValue('--safe-r')) || 0;
+
+        return {
+            top: mapRect.top + MARGIN,
+            bottom: bottom - MARGIN,
+            left: mapRect.left + Math.max(MARGIN, insetLeft),
+            right: mapRect.right - Math.max(MARGIN, insetRight)
+        };
+    }
+
+    /**
+     * The "Fit all" FAB is an exclusion zone the tooltip may never cover
+     * (Poster Map Tooltip Containment PRD). Returns its rect only while
+     * it's actually visible (hidden past Half sheet height via
+     * fit-all-hidden, see bottom-sheet.js), else null.
+     */
+    getTooltipExclusionRect() {
+        if (!this.resetViewBtn || this.resetViewBtn.classList.contains('fit-all-hidden')) {
+            return null;
+        }
+        const rect = this.resetViewBtn.getBoundingClientRect();
+        if (!(rect.width > 0) || !(rect.height > 0)) {
+            return null;
+        }
+        return rect;
+    }
+
+    /**
+     * Shows (or swaps to) a marker's tooltip and starts live placement
+     * tracking. `easel` is used only for the "safe area too short" fallback
+     * (dispatches poster-tooltip-suppressed for index.html to scroll the
+     * matching table row into view instead). `moveFocus` should be true only
+     * for a deliberate tap/keyboard activation, never a mouse hover -
+     * stealing focus on every hover would be disruptive on desktop.
+     */
+    showMarkerTooltip(markerElement, { easel = null, moveFocus = false } = {}) {
+        this._stopTooltipTracking();
+        this._tooltipMarkerEl = markerElement;
+        this._tooltipEasel = easel;
+
+        const safeArea = this.getTooltipSafeAreaRect();
+        if (safeArea.bottom - safeArea.top < 120) {
+            this.infoPanel.classList.remove('active');
+            this._tooltipMarkerEl = null;
+            if (easel) {
+                document.dispatchEvent(new CustomEvent('poster-tooltip-suppressed', {
+                    detail: { easel },
+                    bubbles: true
+                }));
+            }
+            return false;
+        }
+
+        this._placeTooltip({ allowAutoPan: true });
+        this.infoPanel.classList.add('active');
+        this._startTooltipTracking();
+
+        if (moveFocus) {
+            this.infoPanel.focus();
+        }
+
+        return true;
+    }
+
+    _startTooltipTracking() {
+        this._tooltipTrackingActive = true;
+        const step = () => {
+            if (!this._tooltipTrackingActive || !this._tooltipMarkerEl) {
+                this._tooltipRafId = null;
+                return;
+            }
+            this._placeTooltip({ allowAutoPan: false });
+            this._tooltipRafId = requestAnimationFrame(step);
+        };
+        this._tooltipRafId = requestAnimationFrame(step);
+    }
+
+    _stopTooltipTracking() {
+        this._tooltipTrackingActive = false;
+        if (this._tooltipRafId) {
+            cancelAnimationFrame(this._tooltipRafId);
+            this._tooltipRafId = null;
+        }
+    }
+
+    /**
+     * The placement engine (steps 1-5 of the Poster Map Tooltip Containment
+     * PRD). Called once on open (allowAutoPan: true) and every rAF tick
+     * thereafter while the tooltip is tracked (allowAutoPan: false, since
+     * auto-panning mid-gesture would fight the user's own pan/pinch). Always
+     * re-derives from step 0 so the tooltip can scale back up when room
+     * returns (e.g. the sheet is dragged back down). The arrow always points
+     * down at the marker - this tooltip is never placed below it.
+     */
+    _placeTooltip({ allowAutoPan = false } = {}) {
+        const panel = this.infoPanel;
+        const markerEl = this._tooltipMarkerEl;
+        if (!markerEl || !markerEl.isConnected) {
+            return;
+        }
+
+        const safeArea = this.getTooltipSafeAreaRect();
+        const safeWidth = safeArea.right - safeArea.left;
+        const safeHeight = safeArea.bottom - safeArea.top;
+
+        const markerRect = markerEl.getBoundingClientRect();
+        const markerCenterX = markerRect.left + markerRect.width / 2;
+        const markerCenterY = markerRect.top + markerRect.height / 2;
+
+        const markerVisible = markerCenterX >= safeArea.left && markerCenterX <= safeArea.right &&
+            markerCenterY >= safeArea.top && markerCenterY <= safeArea.bottom;
+        if (!markerVisible) {
+            // Hide, don't close - the tracking loop keeps running so this
+            // can reappear if the marker comes back into the safe area
+            // before the gesture/drag ends. Selection itself is untouched.
+            panel.classList.remove('active');
+            return;
+        }
+        panel.classList.add('active');
+
+        const ARROW_SIZE = 10;
+        const ARROW_GAP = 8;
+        const exclusion = this.getTooltipExclusionRect();
+
+        const width = Math.min(safeWidth - 24, safeWidth > safeHeight ? 420 : 340);
+        panel.style.setProperty('--tt-width', `${Math.max(0, width)}px`);
+        panel.classList.remove('tt-step1', 'tt-step2', 'tt-step3', 'tt-scroll');
+        panel.style.removeProperty('--tt-max-height');
+
+        const measure = () => {
+            let left = markerCenterX - width / 2;
+            left = Math.min(Math.max(left, safeArea.left), safeArea.right - width);
+            const top = markerRect.top - ARROW_GAP - ARROW_SIZE - panel.offsetHeight;
+            const arrowPos = Math.min(Math.max(markerCenterX - left, 16 + ARROW_SIZE), width - 16 - ARROW_SIZE);
+
+            panel.style.left = `${left}px`;
+            panel.style.top = `${top}px`;
+            panel.style.right = 'auto';
+            panel.style.bottom = 'auto';
+            panel.style.setProperty('--arrow-side', 'bottom');
+            panel.style.setProperty('--arrow-position', `${arrowPos}px`);
+            panel.style.setProperty('--arrow-size', `${ARROW_SIZE}px`);
+
+            const rect = { left, top, right: left + width, bottom: top + panel.offsetHeight };
+            const fits = top >= safeArea.top && (!exclusion || !rectsIntersect(rect, exclusion));
+            return { top, fits };
+        };
+
+        let result = measure();
+        if (result.fits) return;
+
+        panel.classList.add('tt-step1');
+        result = measure();
+        if (result.fits) return;
+
+        panel.classList.add('tt-step2');
+        result = measure();
+        if (result.fits) return;
+
+        panel.classList.add('tt-step3');
+        result = measure();
+        if (result.fits) return;
+
+        if (allowAutoPan) {
+            this._autoPanForTooltip(markerRect, safeArea, () => this._placeTooltip({ allowAutoPan: false }));
+            return;
+        }
+
+        // Step 5: cap height, pin the title row, scroll the body.
+        const maxHeight = Math.max(80, safeHeight - markerRect.height - 20);
+        panel.classList.add('tt-scroll');
+        panel.style.setProperty('--tt-max-height', `${maxHeight}px`);
+        let left = markerCenterX - width / 2;
+        left = Math.min(Math.max(left, safeArea.left), safeArea.right - width);
+        panel.style.left = `${left}px`;
+        panel.style.top = `${safeArea.top}px`;
+        const arrowPos = Math.min(Math.max(markerCenterX - left, 16 + ARROW_SIZE), width - 16 - ARROW_SIZE);
+        panel.style.setProperty('--arrow-position', `${arrowPos}px`);
+    }
+
+    /**
+     * Step 4 of the placement PRD: pans so the marker's vertical center
+     * lands at 85% of the safe area's height, then re-places above it.
+     * Uses getBaseRenderScale() (letterbox-correct) rather than the touch
+     * gesture code's renderScaleFactor (which assumes width is the
+     * constraining axis and is only refreshed at gesture start) - this is a
+     * one-shot conversion, not a per-frame hot path, so the extra
+     * getBoundingClientRect() call is negligible.
+     */
+    _autoPanForTooltip(markerRect, safeArea, onComplete) {
+        const scale = this.getBaseRenderScale();
+        if (!scale) {
+            onComplete();
+            return;
+        }
+
+        const targetCenterY = safeArea.top + 0.85 * (safeArea.bottom - safeArea.top);
+        const currentCenterY = markerRect.top + markerRect.height / 2;
+        const deltaScreenY = targetCenterY - currentCenterY;
+        const contentDeltaY = deltaScreenY / (scale * this.currentZoom);
+        const target = this.clampPanToBounds(this.panX, this.panY + contentDeltaY);
+
+        this.stopPanInertia(true);
+        this.stopPanAnimation();
+
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            this.panX = target.panX;
+            this.panY = target.panY;
+            this.updateViewBox();
+            onComplete();
+        } else {
+            this.animatePan(target.panX, target.panY, 250, onComplete);
         }
     }
 
